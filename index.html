@@ -172,6 +172,17 @@ meiosis	cell division producing gametes"></textarea></label>
             <option value="0.95">95% — maximum retention</option>
           </select>
         </label>
+        <label class="fld"><span>Theme</span>
+          <select id="set-theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="auto" selected>Match my device</option>
+          </select>
+        </label>
+        <div class="fld" id="calibration-block" hidden>
+          <span>Confidence calibration</span>
+          <div id="calibration-readout" style="font-size:14px;line-height:1.5;color:var(--ink-soft)"></div>
+        </div>
         <label class="fld"><span>Daily new-card goal</span>
           <select id="set-newperday">
             <option>10</option><option selected>20</option><option>30</option><option>50</option>

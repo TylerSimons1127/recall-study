@@ -82,10 +82,10 @@ function avgRetention(){
 /* ---------- persistence ---------- */
 const LS_KEY = 'recall_v3';
 const store = {
-  sets: [],          // {id, title, subject, examDate, color, created, cards:[{id,front,back,f?}]}
-  sessions: [],      // {date, setId, mode, reviewed, correct}
+  sets: [],
+  sessions: [],
   streak: { count: 0, lastDate: '' },
-  settings: { retention: 0.90, newPerDay: 20 },
+  settings: { retention: 0.90, newPerDay: 20, theme: 'auto' },
 };
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(store)); }catch(e){ console.warn('storage full', e); } }
 function load(){
@@ -298,7 +298,8 @@ $('#btn-continue').onclick = ()=>{
 $('#btn-exit-study').onclick = ()=>{ if(session) finishSession(true); };
 
 $('#btn-undo').onclick = ()=>{
-  if(!lastGrade || !session) return;
+  if(!session) return;
+  if(!lastGrade) { $('#btn-undo').disabled = true; return; }
   session.idx--;
   session.reviewed = Math.max(0, session.reviewed - 1);
   if(lastGrade.rating >= 3) session.correct = Math.max(0, session.correct - 1);
@@ -358,16 +359,32 @@ function renderFlashcard(stage, s, card){
       <button class="grade-btn g4" data-g="4"><span>Easy</span><small><kbd>4</kbd></small></button>
     </div>`;
   const fc = $('#fc-card'), gr = $('#grade-row');
+  gr.innerHTML = `
+    <div class="confidence-strip" id="conf-strip">
+      <span class="conf-lab">How sure were you?</span>
+      <button class="conf-btn" data-c="3">Sure</button>
+      <button class="conf-btn" data-c="2">Mostly</button>
+      <button class="conf-btn" data-c="1">Guessed</button>
+    </div>
+  ` + gr.innerHTML;
   fc.onclick = ()=>{ fc.classList.add('flipped'); gr.style.opacity=1; gr.style.pointerEvents='auto'; };
   fc.onkeydown = e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();fc.click();} };
   gr.querySelectorAll('.grade-btn').forEach(b=>{
     b.onclick = ()=>{
       const r = +b.dataset.g;
+      const confBtn = gr.querySelector('.conf-btn.sel');
+      const conf = confBtn ? +confBtn.dataset.c : 2;
       trackGrade(card, r);
+      // store confidence for calibration analytics
+      card.confHistory = (card.confHistory || []).concat([{ r, conf, t: Date.now() }]).slice(-30);
+      save();
       session.reviewed++;
       if(r >= 3) session.correct++;
       nextCard();
     };
+  });
+  gr.querySelectorAll('.conf-btn').forEach(b=>{
+    b.onclick = e=>{ e.stopPropagation(); gr.querySelectorAll('.conf-btn').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); };
   });
 }
 
@@ -381,17 +398,51 @@ function renderLearn(stage, s, card){
         <input class="learn-input" id="learn-input" type="text" placeholder="Type your answer…" autocomplete="off" autocapitalize="off" spellcheck="false"/>
         <button type="submit" class="btn-primary full">Check</button>
       </form>
+      <div class="learn-hint" id="learn-hint" hidden></div>
       <div class="learn-verdict" id="learn-verdict"></div>
     </div>`;
-  const inp = $('#learn-input'), vf = $('#learn-verdict');
+  const inp = $('#learn-input'), vf = $('#learn-verdict'), hint = $('#learn-hint');
   inp.focus();
+  let attempts = 0;
   $('#learn-form').onsubmit = e=>{
     e.preventDefault();
     const ok = fuzzyMatch(normalize(inp.value), normalize(card.back));
-    trackGrade(card, ok ? 3 : 1);
+    attempts++;
+    if(ok){
+      trackGrade(card, attempts === 1 ? 3 : 2); // hint used = "Hard"
+      session.reviewed++; session.correct++;
+      vf.className='learn-verdict ok'; vf.textContent = attempts === 1 ? 'Correct.' : 'Correct — but the hint means this one needs more reps.';
+      hint.hidden = true;
+      setTimeout(nextCard, 1100);
+      return;
+    }
+    if(attempts === 1){
+      // Socratic recovery: useful hint without giving away the answer
+      const back = card.back;
+      const words = back.split(/\s+/).filter(Boolean);
+      let hintTxt;
+      const commaIdx = back.indexOf(',');
+      if(commaIdx > 3 && commaIdx < 60){
+        hintTxt = `Think about: "${back.slice(0, commaIdx).trim()}" …`;
+      } else if(words.length >= 3){
+        const first = words[0];
+        hintTxt = `Starts with "${first[0]}${'_'.repeat(Math.max(0,first.length-1))}" and is ${words.length} words`;
+      } else {
+        hintTxt = `First letter: "${back[0]}" (${back.length} letters)`;
+      }
+      hint.hidden = false;
+      hint.innerHTML = `<strong>Hint:</strong> ${esc(hintTxt)}`;
+      vf.className='learn-verdict no'; vf.innerHTML = 'Not quite. Try again — or skip and I\'ll show it.';
+      inp.classList.add('shake'); setTimeout(()=>inp.classList.remove('shake'),450);
+      inp.value=''; inp.focus();
+      return;
+    }
+    // second miss: reveal and re-queue
+    trackGrade(card, 1);
     session.reviewed++;
-    if(ok){ session.correct++; vf.className='learn-verdict ok'; vf.textContent='Correct.'; setTimeout(nextCard, 900); }
-    else { vf.className='learn-verdict no'; vf.innerHTML = `Not quite — <b>${esc(card.back)}</b>. It'll come back.`; inp.classList.add('shake'); setTimeout(()=>inp.classList.remove('shake'),450); setTimeout(nextCard, 1700); }
+    hint.hidden = true;
+    vf.className='learn-verdict no'; vf.innerHTML = `Answer: <b>${esc(card.back)}</b>. It'll come back around.`;
+    setTimeout(nextCard, 1800);
   };
 }
 
@@ -791,11 +842,31 @@ $('#btn-import-shared').onclick = ()=>{
 function applySettings(){
   const r = store.settings.retention;
   setRetention(r);
-  const sel = $('#set-retention');
-  if(sel) sel.value = String(r);
-  const npd = $('#set-newperday');
-  if(npd) npd.value = String(store.settings.newPerDay);
+  const sel = $('#set-retention'); if(sel) sel.value = String(r);
+  const npd = $('#set-newperday'); if(npd) npd.value = String(store.settings.newPerDay);
+  const th = $('#set-theme'); if(th) th.value = store.settings.theme || 'auto';
+  document.documentElement.dataset.theme = store.settings.theme || 'auto';
+  renderCalibration();
 }
+function renderCalibration(){
+  const block = $('#calibration-block'); if(!block) return;
+  const all = store.sets.flatMap(s=>s.cards).flatMap(c=>c.confHistory||[]);
+  if(all.length < 5){ block.hidden = true; return; }
+  block.hidden = false;
+  const sure = all.filter(h=>h.conf===3), guessed = all.filter(h=>h.conf===1);
+  const sureAcc = sure.length ? Math.round(sure.filter(h=>h.r>=3).length/sure.length*100) : null;
+  const guessAcc = guessed.length ? Math.round(guessed.filter(h=>h.r>=3).length/guessed.length*100) : null;
+  let msg = '';
+  if(sureAcc !== null && sureAcc < 70) msg = `⚠️ When you felt sure, you were right ${sureAcc}% — overconfident. Trust the algorithm's "Again" more.`;
+  else if(guessAcc !== null && guessAcc > 60) msg = `☑ Your "guessed" cards were right ${guessAcc}% — you know more than you think.`;
+  else msg = `Calibration looks healthy — your certainty matches your performance.`;
+  $('#calibration-readout').innerHTML = `<p style="margin-bottom:6px"><b>${all.length}</b> confidence marks recorded.</p><p>${msg}</p>`;
+}
+$('#set-theme').addEventListener('change', e=>{
+  store.settings.theme = e.target.value;
+  document.documentElement.dataset.theme = store.settings.theme;
+  save();
+});
 $('#set-retention').onchange = e=>{
   store.settings.retention = parseFloat(e.target.value);
   save(); setRetention(store.settings.retention);

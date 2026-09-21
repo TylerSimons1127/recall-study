@@ -314,6 +314,48 @@ kbd{font-family:var(--f-mono);font-size:10px;background:var(--bg-2);border:1px s
 .mrow input{flex:1;padding:11px 12px;font-size:14px;background:var(--card);border:1.5px solid var(--line);border-radius:10px}
 .mrow input:focus{outline:none;border-color:var(--acc)}
 
+/* ============ NEW: confidence strip, learn hint, theme, calibration ============ */
+.confidence-strip{
+  grid-column:1/-1;display:flex;align-items:center;gap:6px;justify-content:center;
+  padding:9px 12px;background:var(--bg-2);border-radius:11px;border:1px solid var(--line-soft);
+  margin-bottom:4px;
+}
+.conf-lab{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-right:2px;flex:none}
+.conf-btn{
+  padding:7px 13px;font-size:12.5px;font-weight:600;border-radius:99px;
+  color:var(--ink-soft);border:1px solid var(--line);background:var(--card);
+  transition:all var(--t-micro);min-height:32px;
+}
+.conf-btn:hover{border-color:var(--acc-line);background:var(--acc-tint)}
+.conf-btn.sel{background:var(--acc);color:#fff;border-color:var(--acc)}
+
+.learn-hint{
+  margin-top:12px;padding:11px 14px;border-radius:10px;font-size:13.5px;line-height:1.5;
+  background:var(--acc-tint);border:1px solid var(--acc-line);color:var(--acc-ink);
+}
+
+/* dark theme */
+[data-theme="dark"]{
+  --bg:#181713;--bg-2:#211F19;--card:#26241C;
+  --ink:#F0EEE6;--ink-soft:#D4D1C6;--muted:#8A8578;
+  --line:#3A372C;--line-soft:#2C2A20;
+  --acc:#7FA874;--acc-ink:#BBD6B3;--acc-tint:#2C3426;--acc-line:#41543A;
+  --good:#7FA874;--hard:#C9A662;--bad:#D17B6B;
+}
+@media (prefers-color-scheme: dark){ [data-theme="auto"]{
+  --bg:#181713;--bg-2:#211F19;--card:#26241C;
+  --ink:#F0EEE6;--ink-soft:#D4D1C6;--muted:#8A8578;
+  --line:#3A372C;--line-soft:#2C2A20;
+  --acc:#7FA874;--acc-ink:#BBD6B3;--acc-tint:#2C3426;--acc-line:#41543A;
+  --good:#7FA874;--hard:#C9A662;--bad:#D17B6B;
+}}
+[data-theme="dark"] .card-row, [data-theme="dark"] .set-row{box-shadow:none}
+[data-theme="dark"] .icon-btn:hover{background:var(--bg-2)}
+[data-theme="dark"] .hm-cell.l1{background:#3F4E39}
+[data-theme="dark"] .hm-cell.l2{background:#56704E}
+[data-theme="dark"] .hm-cell.l3{background:#7FA874}
+[data-theme="dark"] .hm-cell.l4{background:#A5C69B}
+
 /* toast */
 .toast{
   position:fixed;left:50%;bottom:calc(102px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
