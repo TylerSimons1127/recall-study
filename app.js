@@ -217,14 +217,20 @@ function renderWeakest(){
 function drawRing(svg, pct){
   const C = 2*Math.PI*50;
   svg.innerHTML = `
-    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--line-soft)" stroke-width="8"/>
-    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--acc)" stroke-width="8"
+    <defs>
+      <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style="stop-color:var(--acc);stop-opacity:1"/>
+        <stop offset="100%" style="stop-color:var(--acc);stop-opacity:.75"/>
+      </linearGradient>
+    </defs>
+    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--line-soft)" stroke-width="8" opacity="0.5"/>
+    ${pct > 0 ? `<circle cx="60" cy="60" r="50" fill="none" stroke="url(#ringGrad)" stroke-width="8"
       stroke-linecap="round" stroke-dasharray="${(pct/100*C).toFixed(1)} ${C.toFixed(1)}"
-      style="transition:stroke-dasharray 800ms cubic-bezier(.3,.7,.3,1)"/>
+      style="transition:stroke-dasharray 800ms cubic-bezier(.3,.7,.3,1)"/>` : ''}
     ${Array.from({length:12},(_,i)=>{
       const a = i/12*Math.PI*2 - Math.PI/2;
       const major = i%3===0, r1 = 44, r2 = major ? 37.5 : 41.5;
-      return `<line x1="${(60+Math.cos(a)*r1).toFixed(1)}" y1="${(60+Math.sin(a)*r1).toFixed(1)}" x2="${(60+Math.cos(a)*r2).toFixed(1)}" y2="${(60+Math.sin(a)*r2).toFixed(1)}" stroke="var(--line)" stroke-width="${major?2:1}" opacity="${major?0.9:0.5}"/>`;
+      return `<line x1="${(60+Math.cos(a)*r1).toFixed(1)}" y1="${(60+Math.sin(a)*r1).toFixed(1)}" x2="${(60+Math.cos(a)*r2).toFixed(1)}" y2="${(60+Math.sin(a)*r2).toFixed(1)}" stroke="var(--line)" stroke-width="${major?2:1}" opacity="${major?0.9:0.45}"/>`;
     }).join('')}`;
 }
 
