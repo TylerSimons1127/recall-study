@@ -282,7 +282,9 @@ kbd{font-family:var(--f-mono);font-size:10px;background:var(--bg-2);border:1px s
 .sum-actions .btn-ghost{flex:1;justify-content:center}
 
 /* ============ SHEET ============ */
-.sheet-veil{position:fixed;inset:0;background:rgba(27,26,21,.32);backdrop-filter:blur(3px);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn var(--t-micro)}
+.sheet-veil{display:none;position:fixed;inset:0;background:rgba(27,26,21,.32);backdrop-filter:blur(3px);z-index:50;align-items:flex-end;justify-content:center;animation:fadeIn var(--t-micro)}
+.sheet-veil:not([hidden]){display:flex}
+.sheet-veil[hidden]{display:none!important}
 @keyframes fadeIn{from{opacity:0}}
 .sheet{
   background:var(--bg);width:100%;max-width:560px;max-height:88dvh;
