@@ -234,6 +234,33 @@ function drawRing(svg, pct){
     }).join('')}`;
 }
 
+/* confidence tracking via long-press on grade (no extra strip) — cleaner UX */
+function wireGradeWithConfidence(gr, card, ratingCb){
+  let heldConf = null, pressT = null;
+  gr.querySelectorAll('.grade-btn').forEach(b=>{
+    const startPress = e=>{ pressT = setTimeout(()=>{ heldConf = +b.dataset.g <= 2 ? 1 : 3; b.classList.add('held'); }, 450); };
+    const endPress = e=>{
+      clearTimeout(pressT);
+      if(b.classList.contains('held')){
+        b.classList.remove('held');
+        // held = confidence ping, don't grade yet
+        card.confHistory = (card.confHistory||[]).concat([{ r: 0, conf: heldConf, t: Date.now() }]).slice(-30);
+        save();
+        toast(`Confidence noted: ${heldConf===3?'Sure':'Guessed'}`);
+        heldConf = null;
+        return;
+      }
+      // regular tap = grade
+      ratingCb(+b.dataset.g);
+    };
+    b.addEventListener('mousedown', startPress);
+    b.addEventListener('touchstart', startPress, {passive:true});
+    b.addEventListener('mouseup', endPress);
+    b.addEventListener('touchend', endPress);
+    b.addEventListener('mouseleave', ()=>{ clearTimeout(pressT); b.classList.remove('held'); });
+  });
+}
+
 /* ---------- SET DETAIL ---------- */
 let currentSetId = null;
 function openSet(id){
@@ -365,32 +392,18 @@ function renderFlashcard(stage, s, card){
       <button class="grade-btn g4" data-g="4"><span>Easy</span><small><kbd>4</kbd></small></button>
     </div>`;
   const fc = $('#fc-card'), gr = $('#grade-row');
-  gr.innerHTML = `
-    <div class="confidence-strip" id="conf-strip">
-      <span class="conf-lab">How sure were you?</span>
-      <button class="conf-btn" data-c="3">Sure</button>
-      <button class="conf-btn" data-c="2">Mostly</button>
-      <button class="conf-btn" data-c="1">Guessed</button>
-    </div>
-  ` + gr.innerHTML;
   fc.onclick = ()=>{ fc.classList.add('flipped'); gr.style.opacity=1; gr.style.pointerEvents='auto'; };
   fc.onkeydown = e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();fc.click();} };
-  gr.querySelectorAll('.grade-btn').forEach(b=>{
-    b.onclick = ()=>{
-      const r = +b.dataset.g;
-      const confBtn = gr.querySelector('.conf-btn.sel');
-      const conf = confBtn ? +confBtn.dataset.c : 2;
-      trackGrade(card, r);
-      // store confidence for calibration analytics
-      card.confHistory = (card.confHistory || []).concat([{ r, conf, t: Date.now() }]).slice(-30);
-      save();
-      session.reviewed++;
-      if(r >= 3) session.correct++;
-      nextCard();
-    };
-  });
-  gr.querySelectorAll('.conf-btn').forEach(b=>{
-    b.onclick = e=>{ e.stopPropagation(); gr.querySelectorAll('.conf-btn').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); };
+  // add confidence hint chip above graders
+  const hint = document.createElement('div');
+  hint.className = 'conf-hint';
+  hint.textContent = 'Hold a grade button to log your confidence.';
+  gr.prepend(hint);
+  wireGradeWithConfidence(gr, card, (r)=>{
+    trackGrade(card, r);
+    session.reviewed++;
+    if(r >= 3) session.correct++;
+    nextCard();
   });
 }
 
