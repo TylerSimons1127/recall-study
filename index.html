@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#3D5A3A"/>
+<link rel="manifest" href="manifest.json"/>
+<title>Recall — study that sticks</title>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="app">
+  <!-- ============ HOME ============ -->
+  <main id="view-home" class="view active">
+    <header class="home-head">
+      <div class="wordmark">Recall<span class="wordmark-dot">.</span></div>
+      <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
+
+    <section class="today-card" id="today-card" aria-label="Today's study">
+      <div class="today-left">
+        <p class="eyebrow" id="today-date">Today</p>
+        <h1 class="today-title" id="today-headline">12 cards due</h1>
+        <p class="today-sub" id="today-sub">Biology · Ch. 4 Cell Structure</p>
+        <button class="btn-primary" id="btn-continue">
+          <span id="continue-label">Continue studying</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="ring-wrap" aria-hidden="true">
+        <svg class="mastery-ring" id="mastery-ring" viewBox="0 0 120 120"></svg>
+        <div class="ring-label"><span id="ring-pct">0</span><small>mastery</small></div>
+      </div>
+    </section>
+
+    <div class="stat-strip">
+      <div class="stat"><span class="stat-num" id="stat-streak">0</span><span class="stat-lab">day streak</span></div>
+      <div class="stat"><span class="stat-num" id="stat-due">0</span><span class="stat-lab">due today</span></div>
+      <div class="stat"><span class="stat-num" id="stat-retention">0%</span><span class="stat-lab">retention</span></div>
+    </div>
+
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">Your sets</h2>
+        <button class="btn-ghost" id="btn-new-set">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          New set
+        </button>
+      </div>
+      <div id="sets-list" class="sets-list"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2 class="section-title">Momentum</h2><span class="section-note">last 12 weeks</span></div>
+      <div id="heatmap" class="heatmap" aria-label="Study activity calendar"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2 class="section-title">Weakest cards</h2><span class="section-note">across all sets</span></div>
+      <div id="weakest-list" class="weakest-list"></div>
+    </section>
+
+    <footer class="pledge">Everything free. No caps, no ads, no lock-in — export anytime.</footer>
+  </main>
+
+  <!-- ============ SET DETAIL ============ -->
+  <main id="view-set" class="view">
+    <header class="bar">
+      <button class="icon-btn" data-nav="home" aria-label="Back"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg></button>
+      <div class="bar-title" id="set-title">Set</div>
+      <button class="icon-btn" id="btn-share" aria-label="Share set"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button>
+    </header>
+    <div class="set-meta" id="set-meta"></div>
+    <div class="exam-row" id="exam-row">
+      <label class="exam-fld"><span>Exam date</span><input type="date" id="exam-date"/></label>
+      <div class="exam-pill" id="exam-pill" hidden></div>
+    </div>
+    <div class="mode-grid" id="mode-grid">
+      <button class="mode-card" data-mode="flashcards"><div class="mode-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="15" rx="2.5"/><path d="M7 3h11a2 2 0 0 1 2 2v11"/></svg></div><div class="mode-t">Flashcards</div><div class="mode-s">Flip & grade</div></button>
+      <button class="mode-card" data-mode="learn"><div class="mode-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div><div class="mode-t">Learn</div><div class="mode-s">Type answers</div></button>
+      <button class="mode-card" data-mode="test"><div class="mode-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"/></svg></div><div class="mode-t">Test</div><div class="mode-s">Graded exam</div></button>
+      <button class="mode-card" data-mode="match"><div class="mode-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="4"/><circle cx="15" cy="15" r="4"/></svg></div><div class="mode-t">Match</div><div class="mode-s">Race the clock</div></button>
+    </div>
+    <div class="section" style="padding:0 20px">
+      <div class="section-head"><h2 class="section-title">Cards</h2><span class="section-note" id="card-count"></span></div>
+      <div id="card-list" class="card-list"></div>
+    </div>
+  </main>
+
+  <!-- ============ STUDY SESSION ============ -->
+  <main id="view-study" class="view">
+    <header class="bar">
+      <button class="icon-btn" id="btn-exit-study" aria-label="End session"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <div class="progress-rail"><div class="progress-fill" id="study-progress"></div></div>
+      <div class="bar-count" id="study-count">1/12</div>
+    </header>
+    <div id="study-stage" class="study-stage"></div>
+  </main>
+
+  <!-- ============ SUMMARY ============ -->
+  <main id="view-summary" class="view">
+    <div class="summary-wrap" id="summary-body"></div>
+  </main>
+
+  <!-- ============ NEW SET SHEET ============ -->
+  <div id="sheet-newset" class="sheet-veil" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="New study set">
+      <div class="sheet-head">
+        <h2>New set</h2>
+        <button class="icon-btn" data-close-sheet aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="sheet-body">
+        <div class="seg" role="tablist" id="newset-tabs">
+          <button class="seg-btn active" data-tab="paste">Paste text</button>
+          <button class="seg-btn" data-tab="manual">Manual</button>
+          <button class="seg-btn" data-tab="import">Import</button>
+        </div>
+        <div class="tab-pane active" id="tab-paste">
+          <label class="fld"><span>Subject & title</span><input id="np-title" type="text" placeholder="e.g. Biology — Ch. 4 Cell Structure" autocomplete="off"/></label>
+          <label class="fld"><span>Paste notes, vocab, or a chapter</span><textarea id="np-text" rows="9" placeholder="Paste your material here — e.g. a list of terms and definitions, or paragraphs of notes."></textarea></label>
+          <button class="btn-primary full" id="btn-generate">Generate study set</button>
+          <p class="hint">Cards are built only from your text — every answer traces back to the source.</p>
+        </div>
+        <div class="tab-pane" id="tab-manual">
+          <label class="fld"><span>Set title</span><input id="nm-title" type="text" placeholder="e.g. Spanish — Unit 3 verbs" autocomplete="off"/></label>
+          <div id="manual-rows"></div>
+          <button class="btn-ghost full" id="btn-add-row">+ Add card</button>
+          <button class="btn-primary full" id="btn-save-manual" style="margin-top:12px">Save set</button>
+        </div>
+        <div class="tab-pane" id="tab-import">
+          <label class="fld"><span>Set title</span><input id="ni-title" type="text" placeholder="e.g. History — Civil War dates" autocomplete="off"/></label>
+          <label class="fld"><span>Paste term/definition pairs — one per line, separated by a tab, comma, or dash</span><textarea id="ni-text" rows="9" placeholder="mitosis	cell division producing identical cells
+meiosis	cell division producing gametes"></textarea></label>
+          <button class="btn-primary full" id="btn-import">Import cards</button>
+          <p class="hint">Works with Quizlet "export" text and CSV. No account needed.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

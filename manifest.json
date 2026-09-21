@@ -1,0 +1,10 @@
+{
+  "name": "Recall",
+  "short_name": "Recall",
+  "description": "Study that sticks — flashcards, FSRS scheduling, tests. Everything free.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F7F4EE",
+  "theme_color": "#3D5A3A",
+  "icons": []
+}
