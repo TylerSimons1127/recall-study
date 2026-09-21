@@ -135,7 +135,7 @@ function renderHome(){
   $('#today-headline').textContent = due===0 ? 'All caught up' : `${due} card${due===1?'':'s'} due`;
   const topSet = store.sets.map(s=>({s, pending:dueCards(s).length})).filter(x=>x.pending>0).sort((a,b)=>b.pending-a.pending)[0];
   $('#today-sub').textContent = topSet ? `${topSet.s.subject} · ${topSet.s.title}` : (store.sets.length ? 'Review any set to keep your streak' : 'Make your first set to begin');
-  $('#continue-label').textContent = due===0 ? (store.sets.length ? 'Review anyway' : 'Create a set') : 'Continue studying';
+  $('#continue-label').textContent = due===0 ? 'Review anyway' : 'Continue studying';
   $('#stat-due').textContent = due;
   $('#stat-streak').textContent = store.streak.count;
   const ret = avgRetention();
@@ -148,6 +148,7 @@ function renderHome(){
   renderSetsList($('#search').value.trim());
   renderHeatmap();
   renderWeakest();
+  renderCalibration();
 }
 
 function renderSetsList(q){
@@ -212,6 +213,40 @@ function renderWeakest(){
     r.style.cursor='pointer';
     wl.appendChild(r);
   });
+}
+
+/* calibration card on home — shows user's confidence-accuracy gap */
+function renderCalibration(){
+  const all = [];
+  store.sets.forEach(s=>s.cards.forEach(c=>{
+    (c.confHistory||[]).forEach(h=>all.push(h));
+  }));
+  const block = $('#calibration-card');
+  if(!block) return;
+  if(all.length < 5){
+    block.innerHTML = `<div class="cal-empty">Study with confidence ratings (hold a grade button) to see your calibration here.</div>`;
+    return;
+  }
+  const sure = all.filter(h=>h.conf===3), guessed = all.filter(h=>h.conf===1);
+  const sureAcc = sure.length ? Math.round(sure.filter(h=>h.r>=3).length/sure.length*100) : null;
+  const guessAcc = guessed.length ? Math.round(guessed.filter(h=>h.r>=3).length/guessed.length*100) : null;
+  let verdict, tone;
+  if(sureAcc !== null && sureAcc < 70){
+    verdict = "Overconfident — you're more sure than right. Trust Again more.";
+    tone = "warn";
+  } else if(guessAcc !== null && guessAcc > 60){
+    verdict = "Underconfident — your guesses are better than you think.";
+    tone = "note";
+  } else {
+    verdict = "Calibrated — your confidence matches your accuracy.";
+    tone = "good";
+  }
+  block.innerHTML = `
+    <div class="cal-stat">
+      <div class="cal-row"><span>Sure</span><b>${sureAcc!==null ? sureAcc+'%' : '—'}</b></div>
+      <div class="cal-row"><span>Guessed</span><b>${guessAcc!==null ? guessAcc+'%' : '—'}</b></div>
+      <div class="cal-row"><span>${all.length} ratings</span><span class="cal-verdict ${tone}">${verdict}</span></div>
+    </div>`;
 }
 
 function drawRing(svg, pct){
@@ -318,7 +353,11 @@ let lastGrade = null; // for undo
 
 document.addEventListener('click', e=>{
   const mc = e.target.closest('.mode-card');
-  if(mc) startSession(currentSetId, mc.dataset.mode);
+  if(!mc) return;
+  const mode = mc.dataset.mode;
+  if(mode === 'print'){ renderPrintSheet(); return; }
+  if(mode === 'voice'){ startVoiceSession(); return; }
+  startSession(currentSetId, mode);
 });
 
 $('#btn-continue').onclick = ()=>{
@@ -542,6 +581,96 @@ function renderMatch(stage, s){
 }
 
 function nextCard(){ session.idx++; if(session.idx >= session.queue.length) finishSession(false); else renderStudy(); }
+
+/* ---------- Voice Recall (Web Speech API) ---------- */
+function startVoiceSession(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    toast('Voice recognition not available in this browser — works in Chrome/Edge/Safari.');
+    return;
+  }
+  const s = store.sets.find(x=>x.id===currentSetId);
+  if(!s || !s.cards.length){ toast('No cards to practice'); return; }
+  const cards = dueCards(s);
+  if(!cards.length) cards.push(...s.cards.slice(0, 5));
+  session = { setId: currentSetId, mode: 'voice', queue: cards, idx: 0, correct: 0, reviewed: 0 };
+  show('study');
+  renderVoice();
+}
+
+function renderVoice(){
+  const s = store.sets.find(x=>x.id===session.setId);
+  const card = session.queue[session.idx];
+  const stage = $('#study-stage');
+  stage.innerHTML = `
+    <div class="voice-q">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Speak your answer</div>
+      <h2 class="voice-term">${esc(card.front)}</h2>
+      <button class="btn-primary full" id="btn-listen" style="display:flex;align-items:center;justify-content:center;gap:8px">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg>
+        Tap to speak
+      </button>
+      <div class="voice-transcript" id="voice-transcript" hidden></div>
+      <div class="voice-actions" id="voice-actions" hidden>
+        <button class="btn-ghost" id="voice-skip">Skip</button>
+        <button class="btn-primary" id="voice-verify-correct">I was right</button>
+        <button class="btn-ghost" id="voice-verify-wrong">I was wrong</button>
+      </div>
+      <p style="margin-top:14px;font-size:12px;color:var(--muted);text-align:center">Answer shows after you speak — tap to verify</p>
+    </div>`;
+  $('#study-progress').style.width = `${(session.idx/session.queue.length*100)}%`;
+  $('#study-count').textContent = `${session.idx+1}/${session.queue.length}`;
+
+  let transcript = '';
+  let active = false;
+  $('#btn-listen').onclick = ()=>{
+    if(active) return;
+    const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onstart = ()=>{ active = true; $('#btn-listen').textContent = 'Listening…'; $('#btn-listen').classList.add('listening'); };
+    rec.onend = ()=>{
+      active = false;
+      $('#btn-listen').textContent = 'Tap to speak'; $('#btn-listen').classList.remove('listening');
+      if(transcript){
+        const tr = $('#voice-transcript');
+        tr.hidden = false;
+        tr.innerHTML = `<strong>You said:</strong> ${esc(transcript)}`;
+        // show answer for self-grade
+        const acts = $('#voice-actions');
+        acts.hidden = false;
+        $('#voice-verify-correct').onclick = ()=>{ trackGrade(card, 3); session.reviewed++; session.correct++; nextCard(); };
+        $('#voice-verify-wrong').onclick = ()=>{ trackGrade(card, 1); session.reviewed++; nextCard(); };
+      }
+    };
+    rec.onerror = ()=>{ active=false; $('#btn-listen').textContent='Tap to speak'; $('#btn-listen').classList.remove('listening'); toast('Mic unavailable — check permissions'); };
+    rec.onresult = e=>{ transcript = e.results[0][0].transcript; };
+    try{ rec.start(); }catch(e){}
+  };
+  $('#voice-skip') && ($('#voice-skip').onclick = ()=>{ trackGrade(card, 1); session.reviewed++; nextCard(); });
+}
+
+/* ---------- Print study sheet ---------- */
+function renderPrintSheet(){
+  const s = store.sets.find(x=>x.id===currentSetId);
+  if(!s || !s.cards.length){ toast('No cards to print'); return; }
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>${esc(s.title)} — Study Sheet</title><style>
+    body{font-family:Georgia,serif;max-width:700px;margin:40px auto;padding:20px;color:#1a1a1a;line-height:1.6}
+    h1{font-size:28px;border-bottom:3px solid #3D5A3A;padding-bottom:10px}
+    .card{display:flex;gap:24px;padding:12px 0;border-bottom:1px solid #ddd;page-break-inside:avoid}
+    .term{font-weight:bold;width:35%;text-align:right;color:#3D5A3A}
+    .def{flex:1}
+    @media print{.no-print{display:none}}
+    .no-print{margin-bottom:20px;padding:10px;background:#f0f0f0;border-radius:6px;font-size:13px}
+  </style></head><body>
+    <div class="no-print">Press Ctrl+P to print · ${s.cards.length} cards</div>
+    <h1>${esc(s.title)}</h1>
+    ${s.cards.map(c=>`<div class="card"><div class="term">${esc(c.front)}</div><div class="def">${esc(c.back)}</div></div>`).join('')}
+  </body></html>`);
+  win.document.close();
+  toast('Print sheet opened in new tab');
+}
+
+function nextAfterFinish(){ session.idx++; if(session.idx >= session.queue.length) finishSession(false); else renderStudy(); }
 
 function finishSession(cancelled, matchTime){
   const s = store.sets.find(x=>x.id===session.setId);
@@ -865,9 +994,10 @@ function applySettings(){
   const npd = $('#set-newperday'); if(npd) npd.value = String(store.settings.newPerDay);
   const th = $('#set-theme'); if(th) th.value = store.settings.theme || 'auto';
   document.documentElement.dataset.theme = store.settings.theme || 'auto';
-  renderCalibration();
+  renderSettingsCalibration();
 }
-function renderCalibration(){
+/* settings-level calibration readout (kept compact, differs from home-card) */
+function renderSettingsCalibration(){
   const block = $('#calibration-block'); if(!block) return;
   const all = store.sets.flatMap(s=>s.cards).flatMap(c=>c.confHistory||[]);
   if(all.length < 5){ block.hidden = true; return; }

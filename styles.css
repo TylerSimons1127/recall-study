@@ -338,10 +338,36 @@ kbd{font-family:var(--f-mono);font-size:10px;background:var(--bg-2);border:1px s
 .mrow input{flex:1;padding:11px 12px;font-size:14px;background:var(--card);border:1.5px solid var(--line);border-radius:10px}
 .mrow input:focus{outline:none;border-color:var(--acc)}
 
-/* ============ NEW: confidence strip, learn hint, theme, calibration ============ */
+/* ============ NEW: voice mode + print + calibration ============ */
 .conf-hint{
   grid-column:1/-1;text-align:center;font-size:11px;color:var(--muted);
   letter-spacing:.03em;margin-bottom:4px;padding:2px 0;
+}
+.voice-q{background:var(--card);border:1px solid var(--line);border-radius:var(--r-l);padding:26px 22px;text-align:center}
+.voice-q h2{font-family:var(--f-disp);font-size:clamp(22px,5.2vw,28px);font-weight:560;line-height:1.3;margin-bottom:20px}
+.voice-transcript{margin-top:16px;padding:13px;background:var(--bg-2);border-radius:10px;font-size:14px;line-height:1.5;text-align:left}
+.voice-actions{display:flex;gap:8px;margin-top:14px;justify-content:center;flex-wrap:wrap}
+.voice-actions .btn-ghost,.voice-actions .btn-primary{min-height:44px;padding:11px 18px;font-size:14px}
+#btn-listen.listening{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.75}}
+
+/* calibration card */
+.calibration-card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-l);
+  padding:20px 22px;margin:0;
+}
+.cal-empty{color:var(--muted);font-size:14px;line-height:1.5;text-align:center;padding:8px 0}
+.cal-stat{display:flex;flex-direction:column;gap:10px}
+.cal-row{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.cal-row b{font-family:var(--f-mono);font-weight:600;font-size:15px}
+.cal-verdict{font-size:12px;font-weight:600;border-radius:99px;padding:4px 10px}
+.cal-verdict.good{background:var(--acc-tint);color:var(--acc-ink)}
+.cal-verdict.warn{background:#F5E9DB;color:#6B4517}
+.cal-verdict.note{background:var(--bg-2);color:var(--ink-soft)}
+
+/* desktop adjustments for new sections */
+@media(min-width:768px){
+  .mode-grid{grid-template-columns:repeat(6,1fr)}
 }
 
 .learn-hint{
