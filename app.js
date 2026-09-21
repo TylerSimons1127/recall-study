@@ -500,29 +500,98 @@ function finishSession(cancelled, matchTime){
   $('#sum-home').onclick = ()=>{ session = null; show('home'); };
 }
 
-/* ---------- AI-lite text → cards ---------- */
-function generateFromText(title, text){
-  const lines = text.split(/\n+/).map(l=>l.trim()).filter(l=>l.length > 3);
+/* ---------- AI card generation: WebLLM in-browser + smart local fallback ---------- */
+let webllmEngine = null, webllmLoading = false;
+const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC"; // ~600MB, fast, good enough for QA extraction
+
+function genStatus(msg, pct){
+  const g = $('#gen-status');
+  if(!msg){ g.hidden = true; return; }
+  g.hidden = false;
+  g.innerHTML = `${esc(msg)}${pct != null ? `<div class="gen-bar"><i style="width:${Math.round(pct*100)}%"></i></div>` : ''}`;
+}
+
+async function aiGenerate(text){
+  // Kick off WebLLM load in background; use smart local parser immediately
+  if(!webllmEngine && !webllmLoading && 'gpu' in navigator){
+    webllmLoading = true;
+    genStatus('Loading AI model (~600 MB, one-time)…', 0.05);
+    try {
+      const mod = await import('https://esm.run/@mlc-ai/web-llm@0.2.84').catch(()=>null);
+      if(mod){
+        const { CreateMLCEngine } = mod;
+        webllmEngine = await CreateMLCEngine(WEBLLM_MODEL, {
+          initProgressCallback: r => genStatus(`Downloading AI model…`, r.progress || 0),
+        });
+        genStatus('AI model ready.');
+      }
+    } catch(e){ console.warn('WebLLM unavailable, staying local-parse', e); }
+    webllmLoading = false;
+  }
+
+  if(webllmEngine){
+    genStatus('AI reading your material…');
+    const prompt = `Extract ${Math.min(20, Math.max(5, Math.floor(text.split(/\s+/).length/25)))} study flashcards from this text as strict JSON only. Each card: {"q":"short term or question","a":"concise answer"}. Rules: facts only from the text, no invented info, no markdown, JSON array only.\n\nTEXT:\n${text.slice(0, 3500)}`;
+    try {
+      const r = await webllmEngine.chat.completions.create({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1800 });
+      const raw = r.choices?.[0]?.message?.content || '';
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if(jsonMatch){
+        const arr = JSON.parse(jsonMatch[0]);
+        const cards = arr.filter(x=>x && x.q && x.a).slice(0,25).map(x=>mkCard(String(x.q).trim(), String(x.a).trim()));
+        if(cards.length) return cards;
+      }
+    } catch(e){ console.warn('AI gen failed', e); }
+  }
+  // fallback: smarter local parser (multi-line + bullets + sentences)
+  return parseLocal(text);
+}
+
+function parseLocal(text){
   const cards = [];
   const seen = new Set();
-  const patterns = [
-    /^(.{2,60}?)\s*[-–—:]\s+(.{4,})$/,
-    /^(.{2,50}?)\s+(?:is|are|means|refers to|consists of|describes)\s+(.{6,})$/i,
-    /^(.{2,40}?)\s{2,}(.{4,})$/,
+  // First: explicit pair lines
+  const pairRe = [
+    /^(.{2,60}?)\s*[-–—•:]\s+(.{4,})$/,
+    /^(.{2,50}?)\s+(?:is|are|means|refers to|consists of|describes|was|were)\s+(.{6,})$/i,
   ];
+  const lines = text.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>3);
   for(const line of lines){
     if(cards.length >= 30) break;
-    for(const re of patterns){
+    for(const re of pairRe){
       const m = line.match(re);
       if(m){
-        const front = m[1].trim(), back = m[2].trim();
+        const front = m[1].trim().replace(/^[-*•\d.)\s]+/,''), back = m[2].trim();
         const key = front.toLowerCase();
-        if(back.length > 1 && !seen.has(key)){ seen.add(key); cards.push(mkCard(front, back)); }
-        break;
+        if(back.length > 1 && !seen.has(key)){
+          seen.add(key);
+          cards.push(mkCard(titleCase(front), back));
+          break;
+        }
+      }
+    }
+  }
+  // Second: definition-sentence harvesting from paragraphs
+  if(cards.length < 5){
+    const sentences = text.replace(/\s+/g,' ').match(/[^.!?]+[.!?]/g) || [];
+    for(const s of sentences){
+      if(cards.length >= 15) break;
+      const m = s.match(/^\s*([A-Z][\w\s'–-]{2,40})\s+(is|are|was|were|refers to|consists of|describes|functions as)\s+(.{8,200}?)[.!?]\s*$/);
+      if(m){
+        const front = m[1].trim(), back = `${m[2]} ${m[3].trim()}`;
+        const key = front.toLowerCase();
+        if(!seen.has(key)){ seen.add(key); cards.push(mkCard(front, back)); }
       }
     }
   }
   return cards;
+}
+function titleCase(s){ return s.replace(/\b\w/g, c=>c.toUpperCase()); }
+
+/* ---------- AI-lite text → cards ---------- */
+function generateFromText(title, text){
+  // synchronous wrapper — kept for compatibility with any old callers
+  return parseLocal(text);
 }
 function mkCard(front, back){ return { id: uid(), front, back, f: null }; }
 
@@ -660,13 +729,22 @@ function addManualRow(front = '', back = ''){
 }
 $('#btn-add-row').onclick = ()=> addManualRow();
 
-$('#btn-generate').onclick = ()=>{
+$('#btn-generate').onclick = async ()=>{
   const title = $('#np-title').value.trim() || 'Untitled set';
-  const cards = generateFromText(title, $('#np-text').value);
-  if(!cards.length){ toast('No term–definition pairs found. Try "term - definition" lines.'); return; }
-  const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards };
-  store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
-  toast(`${cards.length} cards generated`);
+  const text = $('#np-text').value;
+  if(!text.trim()){ toast('Paste some text first.'); return; }
+  $('#btn-generate').disabled = true;
+  genStatus('Reading material…');
+  try{
+    const cards = await aiGenerate(text);
+    if(!cards.length){ genStatus(); toast('No cards found. Try clearer lines like "term - definition".'); return; }
+    const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards };
+    store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
+    toast(`${cards.length} cards generated`);
+    genStatus();
+  } finally {
+    $('#btn-generate').disabled = false;
+  }
 };
 $('#btn-save-manual').onclick = ()=>{
   const title = $('#nm-title').value.trim() || 'Untitled set';

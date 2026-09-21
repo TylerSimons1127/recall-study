@@ -135,9 +135,10 @@
         </div>
         <div class="tab-pane active" id="tab-paste">
           <label class="fld"><span>Subject & title</span><input id="np-title" type="text" placeholder="e.g. Biology — Ch. 4 Cell Structure" autocomplete="off"/></label>
-          <label class="fld"><span>Paste notes, vocab, or a chapter</span><textarea id="np-text" rows="9" placeholder="Paste your material here — e.g. a list of terms and definitions, or paragraphs of notes."></textarea></label>
+          <label class="fld"><span>Paste notes, vocab, or a chapter</span><textarea id="np-text" rows="9" placeholder="Paste your material here — paragraphs, bullet lists, anything. AI will find the quizzable facts."></textarea></label>
           <button class="btn-primary full" id="btn-generate">Generate study set</button>
-          <p class="hint">Cards are built only from your text — every answer traces back to the source.</p>
+          <div id="gen-status" class="gen-status" hidden></div>
+          <p class="hint">AI runs <b>in your browser</b> — materials never leave your device. First run downloads a model (~600 MB, one time).</p>
         </div>
         <div class="tab-pane" id="tab-manual">
           <label class="fld"><span>Set title</span><input id="nm-title" type="text" placeholder="e.g. Spanish — Unit 3 verbs" autocomplete="off"/></label>
