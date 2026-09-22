@@ -6,14 +6,13 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const SERVER_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = process.env.MODEL || "meta-llama/llama-3.2-3b-instruct:free";
+const MODEL = process.env.MODEL || "google/gemma-4-26b-a4b-it:free";
 const FALLBACK_MODELS = [
   MODEL,
-  "meta-llama/llama-3.2-3b-instruct:free",
-  "google/gemma-3-1b-it:free",
-  "google/gemma-2-9b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "nousresearch/hermes-3-llama-3.2-405b:free",
+  "google/gemma-4-31b-it:free",
+  "google/gemma-2-9b-it:free",
+  "meta/llama-3.2-3b-instruct:free",
+  "mistralai/mistral-7b-instruct",
 ].filter((v,i,a)=>a.indexOf(v)===i);
 
 app.use(cors({ origin: true }));
@@ -52,10 +51,9 @@ async function callModel(useKey, messages, maxT=2500, temp=0.3){
       body: JSON.stringify({ model: candidate, messages, temperature: temp, max_tokens: maxT }),
     });
     if (r.ok) return { data: await r.json(), model: candidate };
-    if (r.status !== 404) {
-      const body = await r.text();
-      const err = new Error(`openrouter ${r.status}`); err.status=r.status; err.body=body; throw err;
-    }
+    // Retry on model-resolution errors: 404 = not found, 400 = invalid slug.
+    if (r.status === 404 || (r.status === 400 && (await r.text()).includes("is not a valid model"))) continue;
+    throw Object.assign(new Error(`openrouter ${r.status}`), { status: r.status, body: (await r.text()).slice(0, 300) });
   }
   const e = new Error("all model fallbacks 404'd"); e.status = 404; throw e;
 }
