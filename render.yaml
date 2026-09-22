@@ -12,3 +12,5 @@ services:
         sync: false
       - key: MODEL
         value: meta-llama/llama-3.2-3b-instruct:free
+
+# autoDeploy: true
