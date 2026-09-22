@@ -1,0 +1,20 @@
+# GitHub Actions — trigger Render deploy on every push to main
+# Render auto-deploys only watches the Blueprint file (render.yaml).
+# This action forces a redeploy of the latest main branch after every push.
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
