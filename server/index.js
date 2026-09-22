@@ -1,28 +1,29 @@
-// Recall backend — Express + OpenRouter, deploys on Render
+// Recall backend — Express + OpenRouter on Render, plus optional per-user key for heavy users
 import express from "express";
 import cors from "cors";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+const SERVER_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// Free-but-good defaults; override with MODEL env var
 const MODEL = process.env.MODEL || "meta-llama/llama-3.2-3b-instruct:free";
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/health", (_req, res) => res.json({ ok: true, model: MODEL }));
+app.get("/health", (_req, res) => res.json({ ok: true, model: MODEL, shared: !!SERVER_KEY }));
 
-// POST /api/generate  { text, title? } -> { cards: [{q, a}] }
+// POST /api/generate { text, title? } -> { cards: [{q, a}] }
+// Optional header: X-User-Key: sk-or-v1-...  → use that key instead of shared one.
 app.post("/api/generate", async (req, res) => {
   const { text, title } = req.body || {};
   if (!text || typeof text !== "string" || text.trim().length < 20) {
     return res.status(400).json({ error: "text required (at least 20 chars)" });
   }
-  if (!OPENROUTER_KEY) {
-    return res.status(503).json({ error: "OPENROUTER_API_KEY not configured on server" });
-  }
+  const userKey = (req.headers["x-user-key"] || "").trim();
+  const useKey = userKey || SERVER_KEY;
+  if (!useKey) return res.status(503).json({ error: "no OpenRouter key configured on server" });
+
   const want = Math.min(20, Math.max(5, Math.floor(text.split(/\s+/).length / 30)));
   const prompt = [
     {
@@ -38,7 +39,7 @@ app.post("/api/generate", async (req, res) => {
     const r = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENROUTER_KEY}`,
+        "Authorization": `Bearer ${useKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
         "X-Title": "Recall Study",
@@ -59,7 +60,7 @@ app.post("/api/generate", async (req, res) => {
       .filter(c => c && typeof c.q === "string" && typeof c.a === "string" && c.q.trim() && c.a.trim())
       .slice(0, 30)
       .map(c => ({ q: c.q.trim().slice(0, 300), a: c.a.trim().slice(0, 600) }));
-    res.json({ cards, model: MODEL });
+    res.json({ cards, model: MODEL, source: userKey ? "user" : "shared" });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

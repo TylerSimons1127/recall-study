@@ -711,12 +711,12 @@ function genStatus(msg, pct){
 }
 
 async function aiGenerate(text){
-  // Layer 1: Try remote backend (fast, no download) if REACHABLE and has model
-  const orModelURL = localStorage.getItem('recall_api') || remoteApiBase();
-  if (orModelURL) {
+  // Layer 1: YOUR deployed Render backend (shared by everyone who has your link)
+  const apiBase = (localStorage.getItem('recall_api') || '').trim().replace(/\/+$/, '');
+  if (apiBase) {
     try {
       genStatus('AI reading your material…');
-      const resp = await fetch(`${orModelURL}/api/generate`, {
+      const resp = await fetch(`${apiBase}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, title: $('#np-title')?.value || '' }),
@@ -728,8 +728,8 @@ async function aiGenerate(text){
           return data.cards.map(c => mkCard(c.q, c.a));
         }
       }
-      // 4xx/5xx fall through to local
-    } catch (e) { /* offline / CORS — fall through */ }
+      // If CORS / network fail, fall through to local (never block on cloud)
+    } catch (e) { console.warn('cloud AI unreachable, falling back local', e); }
   }
 
   // Layer 2: WebLLM in-browser (best free-first UX after first 600MB load)
@@ -765,14 +765,6 @@ async function aiGenerate(text){
   }
   // Layer 3: smarter local parser — always available, works offline
   return parseLocal(text);
-}
-
-function remoteApiBase(){
-  const override = localStorage.getItem('recall_api');
-  if (override) return override.replace(/\/+$/,'');
-  // If hosted on a non-GH-Pages host, assume same-origin /api
-  if (location.hostname !== 'tylersimons1127.github.io') return null; // user sets via settings
-  return null; // set explicitly in Settings when you deploy the Render backend
 }
 
 function parseLocal(text){
