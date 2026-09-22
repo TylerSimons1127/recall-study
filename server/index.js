@@ -40,22 +40,29 @@ const STYLE = {
 
 async function callModel(useKey, messages, maxT=2500, temp=0.3){
   for (const candidate of [MODEL, ...FALLBACK_MODELS.filter(c=>c!==MODEL)]) {
-    const r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${useKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
-        "X-Title": "Recall Study",
-      },
-      body: JSON.stringify({ model: candidate, messages, temperature: temp, max_tokens: maxT }),
-    });
-    if (r.ok) return { data: await r.json(), model: candidate };
-    // Retry on model-resolution errors: 404 = not found, 400 = invalid slug.
-    if (r.status === 404 || (r.status === 400 && (await r.text()).includes("is not a valid model"))) continue;
-    throw Object.assign(new Error(`openrouter ${r.status}`), { status: r.status, body: (await r.text()).slice(0, 300) });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${useKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
+          "X-Title": "Recall Study",
+        },
+        body: JSON.stringify({ model: candidate, messages, temperature: temp, max_tokens: maxT }),
+      });
+      if (r.ok) return { data: await r.json(), model: candidate };
+      const body = await r.text().slice(0, 200);
+      // Retry on rate-limit (429) with backoff
+      if (r.status === 429) { await new Promise(res=>setTimeout(res, 2000 * (attempt + 1))); continue; }
+      // Retry on model-resolution error (404 not found, 400 invalid slug) by moving to next model
+      if (r.status === 404 || (r.status === 400 && body.includes("is not a valid model"))) break;
+      // Other errors: throw
+      throw Object.assign(new Error(`openrouter ${r.status}`), { status: r.status, body });
+    }
+    const err = new Error(`openrouter 429 rate-limited all attempts for ${candidate}`); err.status = 429; throw err;
   }
-  const e = new Error("all model fallbacks 404'd"); e.status = 404; throw e;
+  const e = new Error("all model fallbacks exhausted"); e.status = 404; throw e;
 }
 
 app.post("/api/generate", async (req, res) => {
