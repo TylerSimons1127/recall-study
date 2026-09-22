@@ -699,10 +699,6 @@ function finishSession(cancelled, matchTime){
   $('#sum-home').onclick = ()=>{ session = null; show('home'); };
 }
 
-/* ---------- AI card generation: WebLLM in-browser + smart local fallback ---------- */
-let webllmEngine = null, webllmLoading = false;
-const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC"; // ~600MB, fast, good enough for QA extraction
-
 function genStatus(msg, pct){
   const g = $('#gen-status');
   if(!msg){ g.hidden = true; return; }
@@ -711,60 +707,34 @@ function genStatus(msg, pct){
 }
 
 async function aiGenerate(text){
-  // Layer 1: Render backend (shared key or per-user override)
+  // All AI goes through the configured backend — never on-device.
   const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/, '');
-  if (apiBase) {
-    try {
-      genStatus('AI reading your material…');
-      const resp = await fetch(`${apiBase}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, title: $('#np-title')?.value || '' }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.cards && data.cards.length) {
-          genStatus();
-          return data.cards.map(c => mkCard(c.q, c.a));
-        }
-      }
-      // If CORS / network fail, fall through to local (never block on cloud)
-    } catch (e) { console.warn('cloud AI unreachable, falling back local', e); }
+  if (!apiBase) {
+    toast('No AI server configured — check Settings.');
+    return parseLocal(text);
   }
-
-  // Layer 2: WebLLM in-browser (best free-first UX after first 600MB load)
-  if(!webllmEngine && !webllmLoading && 'gpu' in navigator){
-    webllmLoading = true;
-    genStatus('Loading AI model (~600 MB, one-time)…', 0.05);
-    try {
-      const mod = await import('https://esm.run/@mlc-ai/web-llm@0.2.84').catch(()=>null);
-      if(mod){
-        const { CreateMLCEngine } = mod;
-        webllmEngine = await CreateMLCEngine(WEBLLM_MODEL, {
-          initProgressCallback: r => genStatus(`Downloading AI model…`, r.progress || 0),
-        });
-        genStatus('AI model ready.');
-      }
-    } catch(e){ console.warn('WebLLM unavailable, staying local-parse', e); }
-    webllmLoading = false;
-  }
-
-  if(webllmEngine){
+  try {
     genStatus('AI reading your material…');
-    const prompt = `Extract ${Math.min(20, Math.max(5, Math.floor(text.split(/\s+/).length/25)))} study flashcards from this text as strict JSON only. Each card: {"q":"short term or question","a":"concise answer"}. Rules: facts only from the text, no invented info, no markdown, JSON array only.\n\nTEXT:\n${text.slice(0, 3500)}`;
-    try {
-      const r = await webllmEngine.chat.completions.create({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1800 });
-      const raw = r.choices?.[0]?.message?.content || '';
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
-      if(jsonMatch){
-        const arr = JSON.parse(jsonMatch[0]);
-        const cards = arr.filter(x=>x && x.q && x.a).slice(0,25).map(x=>mkCard(String(x.q).trim(), String(x.a).trim()));
-        if(cards.length) return cards;
-      }
-    } catch(e){ console.warn('AI gen failed', e); }
+    const resp = await fetch(`${apiBase}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, title: $('#np-title')?.value || '' }),
+    });
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok) {
+      const msg = data.error || `server ${resp.status}`;
+      throw new Error(msg);
+    }
+    if (data.cards && data.cards.length) {
+      genStatus();
+      return data.cards.map(c => mkCard(c.q, c.a));
+    }
+    throw new Error('AI returned no cards');
+  } catch (e) {
+    genStatus();
+    toast(`AI failed: ${e.message}. Falling back to local parse.`);
+    return parseLocal(text);
   }
-  // Layer 3: smarter local parser — always available, works offline
-  return parseLocal(text);
 }
 
 function parseLocal(text){
