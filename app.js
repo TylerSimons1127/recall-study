@@ -711,7 +711,28 @@ function genStatus(msg, pct){
 }
 
 async function aiGenerate(text){
-  // Kick off WebLLM load in background; use smart local parser immediately
+  // Layer 1: Try remote backend (fast, no download) if REACHABLE and has model
+  const orModelURL = localStorage.getItem('recall_api') || remoteApiBase();
+  if (orModelURL) {
+    try {
+      genStatus('AI reading your material…');
+      const resp = await fetch(`${orModelURL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, title: $('#np-title')?.value || '' }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.cards && data.cards.length) {
+          genStatus();
+          return data.cards.map(c => mkCard(c.q, c.a));
+        }
+      }
+      // 4xx/5xx fall through to local
+    } catch (e) { /* offline / CORS — fall through */ }
+  }
+
+  // Layer 2: WebLLM in-browser (best free-first UX after first 600MB load)
   if(!webllmEngine && !webllmLoading && 'gpu' in navigator){
     webllmLoading = true;
     genStatus('Loading AI model (~600 MB, one-time)…', 0.05);
@@ -742,8 +763,16 @@ async function aiGenerate(text){
       }
     } catch(e){ console.warn('AI gen failed', e); }
   }
-  // fallback: smarter local parser (multi-line + bullets + sentences)
+  // Layer 3: smarter local parser — always available, works offline
   return parseLocal(text);
+}
+
+function remoteApiBase(){
+  const override = localStorage.getItem('recall_api');
+  if (override) return override.replace(/\/+$/,'');
+  // If hosted on a non-GH-Pages host, assume same-origin /api
+  if (location.hostname !== 'tylersimons1127.github.io') return null; // user sets via settings
+  return null; // set explicitly in Settings when you deploy the Render backend
 }
 
 function parseLocal(text){
@@ -994,6 +1023,7 @@ function applySettings(){
   const npd = $('#set-newperday'); if(npd) npd.value = String(store.settings.newPerDay);
   const th = $('#set-theme'); if(th) th.value = store.settings.theme || 'auto';
   document.documentElement.dataset.theme = store.settings.theme || 'auto';
+  const apiInp = $('#set-api'); if(apiInp) apiInp.value = localStorage.getItem('recall_api') || '';
   renderSettingsCalibration();
 }
 /* settings-level calibration readout (kept compact, differs from home-card) */
@@ -1015,6 +1045,11 @@ $('#set-theme').addEventListener('change', e=>{
   store.settings.theme = e.target.value;
   document.documentElement.dataset.theme = store.settings.theme;
   save();
+});
+$('#set-api')?.addEventListener('change', e=>{
+  const v = e.target.value.trim();
+  if(v){ localStorage.setItem('recall_api', v); toast('AI server saved — generation will be faster'); }
+  else { localStorage.removeItem('recall_api'); toast('AI server cleared — using on-device generation'); }
 });
 $('#set-retention').onchange = e=>{
   store.settings.retention = parseFloat(e.target.value);
