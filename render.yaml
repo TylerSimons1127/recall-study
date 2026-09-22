@@ -10,9 +10,8 @@ services:
     envVars:
       - key: OPENROUTER_API_KEY
         sync: false
-      # Primary live model — if OpenRouter rotates this slug, the server's
-      # fallback cascade in index.js tries the next one automatically.
-      - key: MODEL
-        value: google/gemma-3-1b-it:free
+      # NOTE: MODEL env var intentionally omitted — server.js picks a live
+      # default (google/gemma-4-26b-a4b-it:free) with automatic fallback cascade.
+      # Override only if you need to pin a specific model.
 
 # autoDeploy: true
