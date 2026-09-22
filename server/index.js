@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const SERVER_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = process.env.MODEL || "meta-llama/llama-3.2-3b-instruct:free";
+const MODEL = process.env.MODEL || "google/gemma-3n-e2b-it:free";
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
