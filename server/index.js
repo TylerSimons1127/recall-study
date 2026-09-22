@@ -22,10 +22,26 @@ app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true, model: MODEL, shared: !!SERVER_KEY }));
 
-// POST /api/generate { text, title? } -> { cards: [{q, a}] }
-// Optional header: X-User-Key: sk-or-v1-...  → use that key instead of shared one.
+const BLOOM_DESCRIPTIONS = {
+  basic:      "focus on recall: terms, definitions, key facts",
+  application:"focus on applying ideas: scenarios, examples, use cases",
+  analysis:   "focus on comparing, contrasting, cause/effect, synthesis",
+};
+const EASE_DESCRIPTIONS = {
+  easy:   "very short answers, single word or phrase, no trickiness",
+  medium: "one-sentence answers, require reading carefully",
+  hard:   "longer answers that need precise wording or two concepts combined",
+};
+const STYLE_PROMPTS = {
+  term:      `strict "term — definition" pairs`,
+  qa:        `question-and-answer pairs where q is a genuine question`,
+  cloze:     `cloze-deletion style: q shows a sentence with a blanked term (_____), a is the missing term`,
+  truefalse: `true/false statements in q ("True or false: ..."), a is "True" or "False" plus one sentence why`,
+  mixed:     `a healthy mix of term-definition, Q&A, cloze, and true/false`,
+};
+
 app.post("/api/generate", async (req, res) => {
-  const { text, title } = req.body || {};
+  const { text, title, count, depth, ease, style } = req.body || {};
   if (!text || typeof text !== "string" || text.trim().length < 20) {
     return res.status(400).json({ error: "text required (at least 20 chars)" });
   }
@@ -33,7 +49,13 @@ app.post("/api/generate", async (req, res) => {
   const useKey = userKey || SERVER_KEY;
   if (!useKey) return res.status(503).json({ error: "no OpenRouter key configured on server" });
 
-  const want = Math.min(20, Math.max(5, Math.floor(text.split(/\s+/).length / 30)));
+  // Missing fields → sensible defaults ("let the AI decide" when count is 0 / "ai")
+  const depthD = BLOOM_DESCRIPTIONS[depth] || BLOOM_DESCRIPTIONS.application;
+  const easeD = EASE_DESCRIPTIONS[ease] || EASE_DESCRIPTIONS.medium;
+  const styleD = STYLE_PROMPTS[style] || STYLE_PROMPTS.mixed;
+  const requested = (count && count !== "ai") ? parseInt(count, 10) : null;
+  const inferred = requested ?? Math.min(30, Math.max(6, Math.floor(text.split(/\s+/).length / 28)));
+
   const prompt = [
     {
       role: "system",
@@ -41,47 +63,37 @@ app.post("/api/generate", async (req, res) => {
     },
     {
       role: "user",
-      content: `Extract ${want} study flashcards from this ${title ? `material about "${title}"` : "material"}. JSON array only.\n\nTEXT:\n${text.slice(0, 8000)}`,
+      content: `Extract ${inferred} study flashcards from this ${title ? `material about "${title}"` : "material"}.\n\nDEPTH: ${depthD}.\nEASE: ${easeD}.\nFORMAT: ${styleD}.\n\nTEXT:\n${text.slice(0, 8000)}`,
     },
   ];
-  try {
-    const r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${useKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
-        "X-Title": "Recall Study",
-      },
-      body: JSON.stringify({ model: MODEL, messages: prompt, temperature: 0.2, max_tokens: 2000 }),
-    });
 
-    let data, r0 = r;
-    if (r.status === 404) {
-      for (const alt of FALLBACK_MODELS) {
-        if (alt === MODEL) continue;
-        const r2 = await fetch(OPENROUTER_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${useKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
-            "X-Title": "Recall Study",
-          },
-          body: JSON.stringify({ model: alt, messages: prompt, temperature: 0.2, max_tokens: 2000 }),
-        });
-        if (r2.ok) { r0 = r2; break; }
-      }
-      if (r0.status === 404) {
+  try {
+    const firstModel = MODEL;
+    let usedModel = firstModel;
+    let data = null;
+
+    for (const candidate of [firstModel, ...FALLBACK_MODELS] ) {
+      const r = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${useKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://tylersimons1127.github.io/recall-study/",
+          "X-Title": "Recall Study",
+        },
+        body: JSON.stringify({ model: candidate, messages: prompt, temperature: 0.3, max_tokens: 3000 }),
+      });
+      if (r.ok) { data = await r.json(); usedModel = candidate; break; }
+      if (r.status !== 404) {
         const body = await r.text();
-        return res.status(404).json({ error: `openrouter 404`, detail: body.slice(0, 400) });
+        return res.status(r.status).json({ error: `openrouter ${r.status}`, detail: body.slice(0, 400) });
       }
     }
-    if (!r0.ok) {
-      const body = await r0.text();
-      return res.status(r0.status).json({ error: `openrouter ${r0.status}`, detail: body.slice(0, 400) });
+
+    if (!data) {
+      return res.status(404).json({ error: "all model fallbacks 404'd — no free model available right now" });
     }
-    data = await r0.json();
+
     const content = data.choices?.[0]?.message?.content || "";
     const match = content.match(/\[[\s\S]*\]/);
     if (!match) return res.status(502).json({ error: "model did not return JSON", raw: content.slice(0, 300) });
@@ -89,12 +101,33 @@ app.post("/api/generate", async (req, res) => {
     try { arr = JSON.parse(match[0]); } catch { return res.status(502).json({ error: "invalid JSON from model", raw: match[0].slice(0, 300) }); }
     const cards = arr
       .filter(c => c && typeof c.q === "string" && typeof c.a === "string" && c.q.trim() && c.a.trim())
-      .slice(0, 30)
+      .slice(0, 40)
       .map(c => ({ q: c.q.trim().slice(0, 300), a: c.a.trim().slice(0, 600) }));
-    res.json({ cards, model: data.model || MODEL, source: userKey ? "user" : "shared" });
+    res.json({ cards, model: usedModel, source: userKey ? "user" : "shared", requested: inferred });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
+});
+
+// POST /api/explain — answer a card with a step-by-step of where it appeared
+app.post("/api/explain", async (req, res) => {
+  const { front, back, sourceText } = req.body || {};
+  if (!front || !back) return res.status(400).json({ error: "front and back required" });
+  const userKey = (req.headers["x-user-key"] || "").trim();
+  const useKey = userKey || SERVER_KEY;
+  if (!useKey) return res.status(503).json({ error: "no OpenRouter key configured on server" });
+  const prompt = [
+    { role: "system", content: "You are a patient teacher explaining how a flashcard answer traces to the source text. Be brief (2-4 sentences). Quote the relevant source snippet." },
+    { role: "user", content: `Term: ${front}\nMy answer: ${back}\n\nSource text excerpt:\n${(sourceText||"").slice(0, 3000) || "(no source — explain from the term alone)"}` },
+  ];
+  const r = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${useKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, messages: prompt, temperature: 0.4, max_tokens: 500 }),
+  });
+  if (!r.ok) return res.status(r.status).json({ error: `openrouter ${r.status}`, detail: (await r.text()).slice(0, 300) });
+  const data = await r.json();
+  res.json({ explanation: data.choices?.[0]?.message?.content || "" });
 });
 
 app.listen(PORT, () => console.log(`recall-api listening on ${PORT}`));

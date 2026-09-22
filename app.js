@@ -127,7 +127,29 @@ function toast(msg){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function normalize(s){ return String(s).toLowerCase().replace(/[’’']/g,"'").replace(/[^a-z0-9\s]/g,'').replace(/\b(the|a|an|of|in|on|to|for|and|or)\b/g,'').replace(/\s+/g,' ').trim(); }
-function fuzzyMatch(a,b){ if(!a||!b) return false; if(a===b) return true; const wa=new Set(a.split(' ')), wb=new Set(b.split(' ')); let hit=0; for(const t of wa) if(wb.has(t)) hit++; return hit/Math.max(wa.size,wb.size) >= 0.6; }
+/* fuzzyMatch: strict-ish with typo tolerance and partial credit */
+function levenshtein(a,b){
+  const d=Array.from({length:a.length+1},(_,i)=>[i,...Array(b.length).fill(0)]);
+  for(let j=1;j<=b.length;j++)d[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length];
+}
+function gradeAnswer(givenRaw, answer){
+  // returns {tier:'full'|'partial'|'wrong', matched:number, total:number, score:0..1}
+  const g = normalize(givenRaw), a = normalize(answer);
+  if(!g) return {tier:'wrong',matched:0,total:1,score:0};
+  if(g===a) return {tier:'full',matched:1,total:1,score:1};
+  const ga=new Set(g.split(' ').filter(Boolean)), aa=new Set(a.split(' ').filter(Boolean));
+  let match=0;
+  for(const w of ga){ if(aa.has(w)) match++; else { // typo tolerance: edit distance
+      for(const t of aa){ if(Math.abs(t.length-w.length)<=2 && levenshtein(w,t)<=2){ match++; break; } }
+  }}
+  const score = match/Math.max(aa.size,1);
+  if(score>=0.75) return {tier:'full',matched:match,total:aa.size,score};
+  if(score>=0.45) return {tier:'partial',matched:match,total:aa.size,score};
+  return {tier:'wrong',matched:match,total:aa.size,score};
+}
 
 /* ---------- render: HOME ---------- */
 function renderHome(){
@@ -417,6 +439,7 @@ function trackGrade(c, rating){
 
 /* flashcards */
 function renderFlashcard(stage, s, card){
+  const set = store.sets.find(x=>x.id===session.setId);
   stage.innerHTML = `
     <div class="fc-scene">
       <div class="fc-card" id="fc-card" tabindex="0" role="button" aria-label="Flip card">
@@ -444,6 +467,26 @@ function renderFlashcard(stage, s, card){
     if(r >= 3) session.correct++;
     nextCard();
   });
+
+  // Explain button — only visible on the flipped (answer) side
+  if(set && set.sourceText){
+    const ex = document.createElement('button');
+    ex.className = 'btn-ghost'; ex.style.marginTop='12px'; ex.style.justifyContent='center';
+    ex.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 5V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Why this answer?`;
+    ex.onclick = async ev=>{
+      ev.stopPropagation();
+      ex.disabled = true; ex.textContent = '…';
+      try{
+        const txt = await explainCard(card, set.sourceText);
+        ex.textContent = '';
+        const box = document.createElement('div');
+        box.style.cssText = 'margin-top:12px;padding:12px;background:var(--bg-2);border-radius:10px;font-size:13.5px;line-height:1.55;text-align:left;max-width:100%;';
+        box.innerHTML = `<strong>Why:</strong> ${esc(txt)}`;
+        ex.replaceWith(box);
+      }catch(err){ ex.textContent='Try again'; ex.disabled=false; toast('AI explain failed'); }
+    };
+    $('#grade-row').parentNode.insertBefore(ex, $('#grade-row'));
+  }
 }
 
 /* learn */
@@ -463,17 +506,26 @@ function renderLearn(stage, s, card){
   inp.focus();
   let attempts = 0;
   $('#learn-form').onsubmit = e=>{
-    e.preventDefault();
-    const ok = fuzzyMatch(normalize(inp.value), normalize(card.back));
-    attempts++;
-    if(ok){
-      trackGrade(card, attempts === 1 ? 3 : 2); // hint used = "Hard"
-      session.reviewed++; session.correct++;
-      vf.className='learn-verdict ok'; vf.textContent = attempts === 1 ? 'Correct.' : 'Correct — but the hint means this one needs more reps.';
-      hint.hidden = true;
-      setTimeout(nextCard, 1100);
-      return;
-    }
+  e.preventDefault();
+  const evalRes = gradeAnswer(inp.value, card.back);
+  attempts++;
+  if(evalRes.tier === 'full'){
+    trackGrade(card, attempts === 1 ? 3 : 2);
+    session.reviewed++; session.correct++;
+    vf.className='learn-verdict ok'; vf.textContent = attempts === 1 ? 'Correct.' : 'Correct — but the hint means this one needs more reps.';
+    hint.hidden = true;
+    setTimeout(nextCard, 1100);
+    return;
+  }
+  if(evalRes.tier === 'partial'){
+    trackGrade(card, 2); // Hard — partially recalled
+    session.reviewed++; session.correct++;
+    vf.className='learn-verdict ok';
+    vf.innerHTML = `Partial — full answer: <b>${esc(card.back)}</b>. Marked Hard.`;
+    hint.hidden = true;
+    setTimeout(nextCard, 2000);
+    return;
+  }
     if(attempts === 1){
       // Socratic recovery: useful hint without giving away the answer
       const back = card.back;
@@ -706,7 +758,7 @@ function genStatus(msg, pct){
   g.innerHTML = `${esc(msg)}${pct != null ? `<div class="gen-bar"><i style="width:${Math.round(pct*100)}%"></i></div>` : ''}`;
 }
 
-async function aiGenerate(text){
+async function aiGenerate(text, opts = {}){
   // All AI goes through the configured backend — never on-device.
   const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/, '');
   if (!apiBase) {
@@ -718,7 +770,10 @@ async function aiGenerate(text){
     const resp = await fetch(`${apiBase}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, title: $('#np-title')?.value || '' }),
+      body: JSON.stringify({
+        text, title: opts.title || '',
+        count: opts.count, depth: opts.depth, ease: opts.ease, style: opts.style,
+      }),
     });
     const data = await resp.json().catch(()=>({}));
     if (!resp.ok) {
@@ -783,7 +838,11 @@ function generateFromText(title, text){
   // synchronous wrapper — kept for compatibility with any old callers
   return parseLocal(text);
 }
-function mkCard(front, back){ return { id: uid(), front, back, f: null }; }
+function mkCard(front, back){
+  return { id: uid(), front, back, f: null,
+           source: null, difficulty: null, blooms: null, confHistory: [] };
+}
+function mkClip(id, text, source){ return { id, text, ts: Date.now(), source: source || null }; }
 
 /* ---------- share (URL self-contained, no account) ---------- */
 function encodeShareSet(s){
@@ -910,14 +969,113 @@ function switchTab(t){
   $('#tab-import').classList.toggle('active', t === 'import');
 }
 
-function addManualRow(front = '', back = ''){
-  const wrap = $('#manual-rows');
-  const row = document.createElement('div'); row.className = 'mrow';
-  row.innerHTML = `<input placeholder="Term" value="${esc(front)}"/><input placeholder="Definition" value="${esc(back)}"/>`;
-  wrap.appendChild(row);
-  if(!front) row.children[0].focus();
+// file extraction — PDF / DOCX / PPTX / TXT / MD — pure client-side, feeds the paste tab
+let extractedFromFile = null;
+async function extractFileText(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+  const status = $('#file-extract-status');
+  const buf = await file.arrayBuffer();
+  const show = (s)=>{ status.hidden=false; status.textContent=s; };
+  if(ext==='txt' || ext==='md'){ show('Reading text…'); return await file.text(); }
+  if(ext==='pdf'){
+    if(!window.pdfjsLib){ show('PDF.js not loaded — trying later'); return ''; }
+    show('Extracting PDF text…');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const chunks = [];
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      chunks.push(tc.items.map(i=>i.str).join(' '));
+      show(`Extracting page ${p}/${pdf.numPages}…`);
+    }
+    show('');
+    status.hidden = true;
+    return chunks.join('\n');
+  }
+  if(ext==='docx'){
+    if(!window.mammoth){ show('Mammoth.js not loaded'); return ''; }
+    show('Extracting DOCX text…');
+    const r = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    show(''); status.hidden = true;
+    return r.value;
+  }
+  if(ext==='pptx'){
+    show('PPTX: reading slides…');
+    const zip = await JSZip.loadAsync(buf);
+    const files = Object.keys(zip.files).filter(n=>n.startsWith('ppt/slides/slide') && n.endsWith('.xml')).sort();
+    const out = [];
+    for(const f of files){ out.push(await zip.files[f].async('string')); }
+    const joined = out.join('\n');
+    const text = joined.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    show(''); status.hidden = true;
+    return text;
+  }
+  show(`Unsupported: .${ext}`); return '';
 }
-$('#btn-add-row').onclick = ()=> addManualRow();
+
+$('#nf-file').addEventListener('change', async (e)=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  const txt = await extractFileText(f);
+  if(!txt.trim()){ toast('Could not read that file'); return; }
+  extractedFromFile = txt;
+  $('#nf-extracted').value = txt.slice(0,4000) + (txt.length>4000?'\n…(truncated)':'');
+  $('#file-preview-wrap').hidden = false;
+  $('#btn-generate-file').disabled = false;
+  toast(`${f.name.split('.').pop().toUpperCase()} extracted — ${txt.split(/\s+/).length} words`);
+});
+
+$('#btn-generate-file').onclick = async ()=>{
+  if(!extractedFromFile) return;
+  const title = $('#nf-title').value.trim() || 'Untitled set';
+  $('#btn-generate-file').disabled = true;
+  genStatus('Reading material…');
+  try{
+    const opts = {
+      title, count: $('#opt-count').value, depth: $('#opt-depth').value,
+      ease: $('#opt-ease').value, style: $('#opt-style').value,
+      sourceText: extractedFromFile, sourceMeta: 'file',
+    };
+    const cards = await aiGenerate(extractedFromFile, opts);
+    if(!cards.length){ genStatus(); toast('No cards extracted'); return; }
+    const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards,
+                  sourceText: extractedFromFile, blooms: opts.depth, difficulty: opts.ease };
+    store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
+    toast(`${cards.length} cards generated`);
+    genStatus();
+  } finally {
+    $('#btn-generate-file').disabled = false;
+  }
+};
+
+// per-card "Explain" — uses /api/explain against the set's sourceText
+async function explainCard(card, sourceText){
+  const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/,'');
+  if (!apiBase) return 'No AI server configured.';
+  const r = await fetch(`${apiBase}/api/explain`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ front: card.front, back: card.back, sourceText: sourceText||'' }),
+  });
+  if(!r.ok) throw new Error(`explain ${r.status}`);
+  const d = await r.json(); return d.explanation || '';
+}
+
+function attachExplainCard(set, card, container){
+  const btn = document.createElement('button');
+  btn.className = 'card-mini-btn'; btn.title='Explain this card';
+  btn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 5V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+  btn.onclick = async ()=>{
+    toast('Asking for explanation…');
+    try{
+      const txt = await explainCard(card, set.sourceText || '');
+      toast(txt || 'No explanation.');
+    }catch(e){ toast('AI explain unavailable — ' + e.message); }
+  };
+  container.appendChild(btn);
+}
+
+/* attach in card row */
+// explain is not surfaced in the card list; instead it lives in study mode on the flipped side
 
 $('#btn-generate').onclick = async ()=>{
   const title = $('#np-title').value.trim() || 'Untitled set';
@@ -926,9 +1084,15 @@ $('#btn-generate').onclick = async ()=>{
   $('#btn-generate').disabled = true;
   genStatus('Reading material…');
   try{
-    const cards = await aiGenerate(text);
+    const opts = {
+      title, count: $('#opt-count').value, depth: $('#opt-depth').value,
+      ease: $('#opt-ease').value, style: $('#opt-style').value,
+      sourceText: text, sourceMeta: 'paste',
+    };
+    const cards = await aiGenerate(text, opts);
     if(!cards.length){ genStatus(); toast('No cards found. Try clearer lines like "term - definition".'); return; }
-    const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards };
+    const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards,
+                  sourceText: text, blooms: opts.depth, difficulty: opts.ease, confidence: null };
     store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
     toast(`${cards.length} cards generated`);
     genStatus();
