@@ -52,13 +52,14 @@ async function callModel(useKey, messages, maxT=2500, temp=0.3){
         body: JSON.stringify({ model: candidate, messages, temperature: temp, max_tokens: maxT }),
       });
       if (r.ok) return { data: await r.json(), model: candidate };
-      const body = await r.text().slice(0, 200);
+      const body = await r.text();
+      const bodyPreview = body.slice(0, 200);
       // Retry on rate-limit (429) with backoff
       if (r.status === 429) { await new Promise(res=>setTimeout(res, 2000 * (attempt + 1))); continue; }
       // Retry on model-resolution error (404 not found, 400 invalid slug) by moving to next model
       if (r.status === 404 || (r.status === 400 && body.includes("is not a valid model"))) break;
       // Other errors: throw
-      throw Object.assign(new Error(`openrouter ${r.status}`), { status: r.status, body });
+      throw Object.assign(new Error(`openrouter ${r.status}`), { status: r.status, body: bodyPreview });
     }
     const err = new Error(`openrouter 429 rate-limited all attempts for ${candidate}`); err.status = 429; throw err;
   }
