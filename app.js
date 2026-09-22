@@ -711,8 +711,8 @@ function genStatus(msg, pct){
 }
 
 async function aiGenerate(text){
-  // Layer 1: YOUR deployed Render backend (shared by everyone who has your link)
-  const apiBase = (localStorage.getItem('recall_api') || '').trim().replace(/\/+$/, '');
+  // Layer 1: Render backend (shared key or per-user override)
+  const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/, '');
   if (apiBase) {
     try {
       genStatus('AI reading your material…');
