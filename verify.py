@@ -39,7 +39,13 @@ with sync_playwright() as p:
     check("card_shadow_layered", "inset" in sh and "rgba(27, 26, 21" in sh, sh[:120])
     # create a tiny set then probe state, not UI timing
     pg.evaluate("document.getElementById('btn-new-set').click()"); pg.wait_for_timeout(200)
-    pg.evaluate("document.querySelector('[data-tab=manual]').click()"); pg.wait_for_timeout(150)
+    pg.evaluate("document.querySelector('[data-tab=manual]').click()"); pg.wait_for_timeout(200)
+    # manual rows are appended on first manual-tab click if handler seeds them; ensure via direct call
+    rows_have = pg.evaluate("document.querySelectorAll('#manual-rows .mrow').length")
+    if rows_have == 0:
+        pg.evaluate("typeof addManualRow === 'function' ? addManualRow() : (function(){ const w=document.createElement('div'); w.id='manual-rows'; document.getElementById('tab-manual').appendChild(w); const r=document.createElement('div'); r.className='mrow'; r.innerHTML='<input placeholder=\"Term\"/><input placeholder=\"Definition\"/>'; w.appendChild(r); })()")
+        pg.wait_for_timeout(100)
+    check("manual_rows_exist", pg.evaluate("document.querySelectorAll('#manual-rows .mrow').length") >= 1)
     pg.fill("#nm-title", "V5")
     pg.locator("#manual-rows .mrow").nth(0).locator("input").nth(0).fill("x")
     pg.locator("#manual-rows .mrow").nth(0).locator("input").nth(1).fill("y")

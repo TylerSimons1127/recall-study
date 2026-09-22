@@ -4,6 +4,19 @@ import { fsrs, createEmptyCard, Rating, State } from './ts-fsrs.js';
 (() => {
 'use strict';
 
+// module-scope safety: never leave a ReferenceError when user clicks fast
+window.addManualRow = function(f, b){
+  let w = document.getElementById('manual-rows');
+  if(!w){
+    const p = document.getElementById('tab-manual'); if(!p) return;
+    w = document.createElement('div'); w.id = 'manual-rows'; p.appendChild(w);
+  }
+  const r = document.createElement('div'); r.className='mrow';
+  r.innerHTML = '<input placeholder="Term"/><input placeholder="Definition"/>';
+  w.appendChild(r);
+};
+
+
 /* ---------- FSRS scheduler (real, 21-param v6) ---------- */
 let scheduler = fsrs({ request_retention: 0.90, maximum_interval: 36500, enable_fuzz: true });
 
@@ -1076,6 +1089,23 @@ function attachExplainCard(set, card, container){
 
 /* attach in card row */
 // explain is not surfaced in the card list; instead it lives in study mode on the flipped side
+
+function addManualRow(front = '', back = ''){
+  let wrap = $('#manual-rows');
+  if(!wrap){
+    const pane = document.getElementById('tab-manual');
+    if(!pane) return; // called before mount; ignore
+    wrap = document.createElement('div'); wrap.id = 'manual-rows'; pane.appendChild(wrap);
+  }
+  const row = document.createElement('div'); row.className = 'mrow';
+  row.innerHTML = `<input placeholder="Term" value="${esc(front)}"/><input placeholder="Definition" value="${esc(back)}"/>`;
+  wrap.appendChild(row);
+  if(!front) row.children[0].focus();
+}
+$('#btn-add-row').onclick = ()=> addManualRow();
+
+// seed three rows on first paint so panel isn't empty when tab opens
+setTimeout(()=>{ try{ addManualRow(); addManualRow(); addManualRow(); }catch(e){} }, 60);
 
 $('#btn-generate').onclick = async ()=>{
   const title = $('#np-title').value.trim() || 'Untitled set';
