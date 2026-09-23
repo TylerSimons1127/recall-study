@@ -6,14 +6,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const SERVER_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = process.env.MODEL || "google/gemma-4-26b-a4b-it:free";
 const FALLBACK_MODELS = [
-  MODEL,
+  "google/gemma-4-26b-a4b-it:free",
   "google/gemma-4-31b-it:free",
   "google/gemma-2-9b-it:free",
   "meta/llama-3.2-3b-instruct:free",
   "mistralai/mistral-7b-instruct",
 ].filter((v,i,a)=>a.indexOf(v)===i);
+const MODEL = process.env.MODEL || FALLBACK_MODELS[0];
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "10mb" }));
