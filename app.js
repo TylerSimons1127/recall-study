@@ -97,7 +97,7 @@ const LS_KEY = 'recall_v3';
 const store = {
   sets: [],
   sessions: [],
-  streak: { count: 0, lastDate: '' },
+  streak: { count: 0, lastDate: '', freezes: 0, lastFreezeEarned: '', usedFreeze: '' },
   settings: { retention: 0.90, newPerDay: 20, theme: 'auto' },
 };
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(store)); }catch(e){ console.warn('storage full', e); } }
@@ -112,8 +112,40 @@ function bumpStreak(){
   const t = todayStr();
   if(store.streak.lastDate !== t){
     const yest = todayStr(new Date(Date.now() - 86400000));
-    store.streak.count = (store.streak.lastDate === yest) ? store.streak.count + 1 : 1;
+    if(store.streak.lastDate === yest){
+      store.streak.count++;
+    } else if(store.streak.lastDate && store.streak.lastDate !== t){
+      // Missed a day — check for streak freeze
+      const lastDate = new Date(store.streak.lastDate), today = new Date();
+      const daysDiff = Math.floor((today - lastDate) / 86400000);
+      if(daysDiff === 1 && store.streak.freezes > 0){
+        // Consume a freeze: pretend we didn't miss
+        store.streak.freezes--;
+        store.streak.usedFreeze = t;
+        toast('Streak freeze used!'); // quiet UX win: don't ding first-study of the day
+        store.streak.lastDate = t; // extend as if studied yesterday
+      } else {
+        // Actually missed
+        if(store.streak.count >= 7){ store.streak.freezes = (store.streak.freezes||0) + 1; toast('Streak protected — freeze earned!'); }
+        store.streak.count = 1;
+      }
+    } else {
+      // First study ever
+      if(store.streak.count >= 7){ store.streak.freezes = (store.streak.freezes||0) + 1; }
+      store.streak.count = 1;
+    }
     store.streak.lastDate = t;
+    save();
+  }
+}
+
+/* Every 7 consecutive days = 1 streak freeze (bank max 3) */
+function earnFreezeIfEligible(){
+  const wk = todayStr(new Date());
+  if(store.streak.count >= 7 && store.streak.lastFreezeEarned !== wk && (store.streak.freezes||0) < 3){
+    store.streak.freezes = (store.streak.freezes||0) + 1;
+    store.streak.lastFreezeEarned = wk;
+    toast(`Streak freeze earned — you can miss a day without losing your ${store.streak.count} streak`);
     save();
   }
 }
@@ -181,7 +213,8 @@ function renderHome(){
   $('#today-sub').textContent = topSet ? `${topSet.s.subject} · ${topSet.s.title}` : (store.sets.length ? 'Review any set to keep your streak' : 'Make your first set to begin');
   $('#continue-label').textContent = due===0 ? 'Review anyway' : 'Continue studying';
   $('#stat-due').textContent = due;
-  $('#stat-streak').textContent = store.streak.count;
+  const fz = store.streak.freezes||0;
+  $('#stat-streak').textContent = store.streak.count + (fz > 0 ? ` (${fz}❄)` : '');
   const ret = avgRetention();
   $('#stat-retention').textContent = ret===null ? '—' : ret+'%';
   const ringPct = ret===null ? 0 : ret;
@@ -781,6 +814,7 @@ function finishSession(cancelled, matchTime){
   const pct = session.reviewed ? Math.round(session.correct/session.reviewed*100) : 0;
   store.sessions.push({ date: todayStr(), setId: session.setId, mode: session.mode, reviewed: session.reviewed, correct: session.correct });
   bumpStreak();
+  earnFreezeIfEligible();
   save();
   renderHome();
   const sb = $('#summary-body');
