@@ -465,8 +465,8 @@ function renderFlashcard(stage, s, card){
   stage.innerHTML = `
     <div class="fc-scene">
       <div class="fc-card" id="fc-card" tabindex="0" role="button" aria-label="Flip card">
-        <div class="fc-face"><div class="fc-tag">${esc(s.subject)}</div><div class="fc-text">${esc(card.front)}</div><div class="fc-hint">Tap or press space to flip</div></div>
-        <div class="fc-face fc-back"><div class="fc-tag">Answer</div><div class="fc-text">${esc(card.back)}</div><div class="fc-hint">How well did you know it?</div></div>
+        <div class="fc-face"><div class="fc-tag">${esc(s.subject)}</div><div class="fc-text kx-tex">${esc(card.front)}</div><div class="fc-hint">Tap or press space to flip</div></div>
+        <div class="fc-face fc-back"><div class="fc-tag">Answer</div><div class="fc-text kx-tex">${esc(card.back)}</div><div class="fc-hint">How well did you know it?</div></div>
       </div>
     </div>
     <div class="grade-row" id="grade-row" style="opacity:0;pointer-events:none;transition:opacity var(--t-micro)">
@@ -527,6 +527,13 @@ function renderFlashcard(stage, s, card){
     tut.addEventListener('click', e=>e.stopPropagation());
     $('#grade-row').parentNode.insertBefore(tut, $('#grade-row'));
   }
+  // KaTeX auto-render math in card text (opportunistic — only if $...$ present)
+  if(window.renderMathInElement) renderMathInElement(stage, { delimiters: [
+      {left:'$$', right:'$$', display:true},
+      {left:'\\[', right:'\\]', display:true},
+      {left:'$', right:'$', display:false},
+      {left:'\\(', right:'\\)', display:false}
+  ]});
 }
 
 /* learn */
@@ -542,7 +549,11 @@ function renderLearn(stage, s, card){
       <div class="learn-hint" id="learn-hint" hidden></div>
       <div class="learn-verdict" id="learn-verdict"></div>
     </div>`;
-  const inp = $('#learn-input'), vf = $('#learn-verdict'), hint = $('#learn-hint');
+  try{ if(window.renderMathInElement) renderMathInElement(stage, { delimiters: [
+      {left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},
+      {left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false}
+  ]}); }catch(e){}
+const inp = $('#learn-input'), vf = $('#learn-verdict'), hint = $('#learn-hint');
   inp.focus();
   let attempts = 0;
   $('#learn-form').onsubmit = e=>{
