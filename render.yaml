@@ -14,4 +14,4 @@ services:
       # default (google/gemma-4-26b-a4b-it:free) with automatic fallback cascade.
       # Override only if you need to pin a specific model.
 
-# autoDeploy: true — trigger rebuild
+autoDeploy: true
