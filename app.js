@@ -137,8 +137,17 @@ function toast(msg){
   const t=$('#toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(t._to); t._to = setTimeout(()=>t.classList.remove('show'), 2600);
 }
+function showModal(html){
+  let m = $('#modal'); if(!m){ m=document.createElement('div'); m.id='modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.42);backdrop-filter:blur(6px);display:grid;place-items:center;z-index:99;padding:20px">
+    <div style="background:var(--card);color:var(--ink);border-radius:var(--r-l);max-width:520px;width:100%;padding:24px 22px;line-height:1.6;max-height:80dvh;overflow-y:auto;border:1px solid var(--line)">
+      <button style="float:right;background:none;border:0;font-size:20px;cursor:pointer;color:var(--ink-soft);opacity:.7" onclick="this.parentNode.parentNode.remove()">✕</button>
+      <div style="font-size:14.5px">${html}</div>
+    </div>
+  </div>`;
+}
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]} return a; }
 function normalize(s){ return String(s).toLowerCase().replace(/[’’']/g,"'").replace(/[^a-z0-9\s]/g,'').replace(/\b(the|a|an|of|in|on|to|for|and|or)\b/g,'').replace(/\s+/g,' ').trim(); }
 /* fuzzyMatch: strict-ish with typo tolerance and partial credit */
 function levenshtein(a,b){
@@ -499,7 +508,24 @@ function renderFlashcard(stage, s, card){
       }catch(err){ ex.textContent='Try again'; ex.disabled=false; toast('AI explain failed'); }
     };
     $('#grade-row').parentNode.insertBefore(ex, $('#grade-row'));
-  }
+
+    // Tutor — ask a question grounded in the set's source text
+    const tut = document.createElement('button');
+    tut.className = 'btn-ghost'; tut.style.marginTop='8px'; tut.style.justifyContent='center';
+    tut.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9 12h6M12 9v6"/></svg> Ask tutor`;
+    tut.onclick = ()=>{
+      const q = prompt('Ask about this material (tutor answers only from your notes):');
+      if(!q || !q.trim()) return;
+      tut.disabled = true; tut.textContent = 'Asking tutor…';
+      askTutor(q.trim(), set.sourceText || '', (ans, card)=>{
+        let msg = esc(ans);
+        if(card && card.q && card.a) msg += `<br><br><i>New card suggested:</i><br><b>${esc(card.q)}</b> — ${esc(card.a)}</i>`;
+        showModal(msg);
+        tut.disabled = false; tut.textContent = 'Ask tutor';
+      });
+    };
+    tut.addEventListener('click', e=>e.stopPropagation());
+    $('#grade-row').parentNode.insertBefore(tut, $('#grade-row'));
 }
 
 /* learn */
@@ -1064,13 +1090,31 @@ $('#btn-generate-file').onclick = async ()=>{
 // per-card "Explain" — uses /api/explain against the set's sourceText
 async function explainCard(card, sourceText){
   const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/,'');
-  if (!apiBase) return 'No AI server configured.';
+  if (!apiBase) throw new Error('No AI server configured.');
   const r = await fetch(`${apiBase}/api/explain`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ front: card.front, back: card.back, sourceText: sourceText||'' }),
   });
   if(!r.ok) throw new Error(`explain ${r.status}`);
   const d = await r.json(); return d.explanation || '';
+}
+
+// Tutor — source-grounded Q&A from your material
+async function askTutor(question, sourceText, onResult){
+  const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/,'');
+  if(!apiBase) onResult('No AI server configured.', null);
+  const r = await fetch(`${apiBase}/api/tutor`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ question, sourceText: sourceText || '' }),
+  });
+  let answer = '';
+  if(r.ok){
+    try{ const d = await r.json(); answer = d.answer || d.explanation || ''; }
+    catch{ answer = 'Could not parse tutor response.'; }
+  } else {
+    answer = `Tutor unavailable (${r.status}).`;
+  }
+  onResult(answer, null);
 }
 
 function attachExplainCard(set, card, container){

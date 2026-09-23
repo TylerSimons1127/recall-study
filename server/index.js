@@ -109,4 +109,28 @@ app.post("/api/explain", async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: String(e.message || e) }); }
 });
 
+// /api/tutor — source-grounded answers; never invents facts beyond the pasted text
+app.post("/api/tutor", async (req, res) => {
+  const { question, sourceText } = req.body || {};
+  if (!question || typeof question !== "string" || question.trim().length < 4) return res.status(400).json({ error: "question required" });
+  const userKey = (req.headers["x-user-key"] || "").trim();
+  const useKey = userKey || SERVER_KEY;
+  if (!useKey) return res.status(503).json({ error: "no OpenRouter key configured on server" });
+
+  const prompt = [
+    { role: "system", content: "You are a study tutor. You ONLY answer from the supplied source text. If the answer isn't in the text, say so plainly — do not guess, hallucinate, or generalize beyond the text. Keep answers to 3-4 sentences max. After answering, if the material covers the topic, create a short flashcard from your explanation in the format: [card] q|a." },
+    { role: "user", content: `Question: ${question.trim()}\n\nSource text:\n${(sourceText || "").slice(0, 5000)}` },
+  ];
+
+  try {
+    const { data, model } = await callModel(useKey, prompt, 800, 0.3);
+    const text = data.choices?.[0]?.message?.content || "";
+    const match = text.match(/\[card\]\s*(.+?)\|(.+?)$/ms);
+    const card = match ? { q: match[1].trim(), a: match[2].trim() } : null;
+    res.json({ answer: text.replace(/\[card\].*$/ms, "").trim(), card, model });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: String(e.message || e), detail: e.body ? e.body.slice(0, 300) : undefined });
+  }
+});
+
 app.listen(PORT, () => console.log(`recall-api listening on ${PORT}`));
