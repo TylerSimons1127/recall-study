@@ -147,7 +147,7 @@ function showModal(html){
   </div>`;
 }
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]} return a; }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function normalize(s){ return String(s).toLowerCase().replace(/[’’']/g,"'").replace(/[^a-z0-9\s]/g,'').replace(/\b(the|a|an|of|in|on|to|for|and|or)\b/g,'').replace(/\s+/g,' ').trim(); }
 /* fuzzyMatch: strict-ish with typo tolerance and partial credit */
 function levenshtein(a,b){
@@ -526,6 +526,7 @@ function renderFlashcard(stage, s, card){
     };
     tut.addEventListener('click', e=>e.stopPropagation());
     $('#grade-row').parentNode.insertBefore(tut, $('#grade-row'));
+  }
 }
 
 /* learn */
