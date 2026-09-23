@@ -1,27 +1,33 @@
+/* ============ DARK MODE (paper → ink) ============ */
+:root[data-theme="dark"]{
+  --bg:        #0C0B09;
+  --bg-2:      #15130E;
+  --card:      #1B1913;
+  --ink:       #F0EDE5;
+  --ink-soft:  #CFC9BC;
+  --muted:     #837E70;
+  --line:      #2E2B23;
+  --line-soft: #232118;
+  --acc:       #5B7A50;   /* slightly lifted moss for dark */
+  --acc-ink:   #C9D4BC;
+  --acc-tint:  #1E2418;
+  --acc-line:  #3D5A3A;
+  --good:  #5B7A50;
+  --hard:  #D4A24E;
+  --bad:   #C96A55;
+}
+:root[data-theme="dark"] body{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+}
+/* light */
+:root[data-theme="auto"]{
+  --bg:#F7F4EE;--bg-2:#F1EDE3;--card:#FFFDF8;--ink:#1B1A15;--ink-soft:#43413A;--muted:#8A8578;--line:#E4DFD1;--line-soft:#EFEAE0;
+  --acc:#3D5A3A;--acc-ink:#2E442C;--acc-tint:#EDF1E7;--acc-line:#C9D4BC;--good:#3D5A3A;--hard:#A87B2E;--bad:#A6452F;
+}
+*{-webkit-tap-highlight-color:transparent}
+
 /* ============ RECALL — token system ============ */
 :root{
-  /* paper palette (light, warm, premium) */
-  --bg:        #F7F4EE;
-  --bg-2:      #F1EDE3;
-  --card:      #FFFDF8;
-  --ink:       #1B1A15;
-  --ink-soft:  #43413A;
-  --muted:     #8A8578;
-  --line:      #E4DFD1;
-  --line-soft: #EFEAE0;
-  /* ONE accent */
-  --acc:       #3D5A3A;   /* moss */
-  --acc-ink:   #2E442C;
-  --acc-tint:  #EDF1E7;
-  --acc-line:  #C9D4BC;
-  /* states */
-  --good:  #3D5A3A;
-  --hard:  #A87B2E;
-  --bad:   #A6452F;
-  /* type */
-  --f-disp: "Fraunces", "Iowan Old Style", Georgia, serif;
-  --f-body: "Public Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
-  --f-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
   /* spacing (4/8) + radii */
   --r-s: 8px; --r-m: 14px; --r-l: 22px;
   /* motion */
