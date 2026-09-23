@@ -210,10 +210,13 @@
         </div>
         <div class="tab-pane" id="tab-import">
           <label class="fld"><span>Set title</span><input id="ni-title" type="text" placeholder="e.g. History — Civil War dates" autocomplete="off"/></label>
-          <label class="fld"><span>Paste term/definition pairs — one per line, separated by a tab, comma, or dash</span><textarea id="ni-text" rows="9" placeholder="mitosis	cell division producing identical cells
+          <label class="fld"><span>Paste a Quizlet set link</span><input id="ni-quizlet-url" type="url" placeholder="https://quizlet.com/…/set-slug-flash-cards/" autocomplete="off"/></label>
+          <button class="btn-ghost full" id="btn-quizlet-import" style="margin-bottom:12px">Import from Quizlet</button>
+          <div style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 12px">or paste pairs manually</div>
+          <label class="fld"><span>Term/definition pairs — one per line, separated by tab, comma, or dash</span><textarea id="ni-text" rows="9" placeholder="mitosis	cell division producing identical cells
 meiosis	cell division producing gametes"></textarea></label>
           <button class="btn-primary full" id="btn-import">Import cards</button>
-          <p class="hint">Works with Quizlet "export" text and CSV. No account needed.</p>
+          <p class="hint">CSV text works too. No account needed.</p>
         </div>
       </div>
     </div>

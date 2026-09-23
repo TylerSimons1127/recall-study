@@ -1199,6 +1199,31 @@ $('#btn-import').onclick = ()=>{
   store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
   toast(`Imported ${cards.length} cards`);
 };
+
+/* Quizlet URL import */
+$('#btn-quizlet-import').onclick = async ()=>{
+  const url = $('#ni-quizlet-url').value.trim();
+  const title = $('#ni-title').value.trim() || 'Quizlet set';
+  if(!url || !url.includes('quizlet.com')){ toast('Paste a Quizlet set link first'); return; }
+  const btn = $('#btn-quizlet-import');
+  btn.disabled = true; btn.textContent = 'Importing…';
+  try{
+    const apiBase = (localStorage.getItem('recall_api') || (window.RECALL_API_BASE || '')).trim().replace(/\/+$/,'');
+    if(!apiBase){ toast('No AI server configured — offline import only'); return; }
+    const r = await fetch(`${apiBase}/api/import-quizlet`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url }),
+    });
+    if(!r.ok){ const e = await r.json().catch(()=>({})); throw new Error(e.error || `HTTP ${r.status}`); }
+    const d = await r.json();
+    const cards = (d.cards || []).map(c => mkCard(c.q, c.a));
+    if(!cards.length) throw new Error('No cards found on that page');
+    const set = { id: uid(), subject: title.split(/[-—–:]/)[0].trim() || 'General', title, color: newColor(), examDate: '', cards, sourceText: (d.cards.map(c=>`${c.q} — ${c.a}`).join('\n')).slice(0, 6000) };
+    store.sets.unshift(set); save(); closeSheet(); openSet(set.id);
+    toast(`Imported ${cards.length} cards from Quizlet`);
+  }catch(e){ toast('Import failed — ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Import from Quizlet';
+};
 function newColor(){ const cs = ['#3D5A3A','#7A5A38','#5A3A44','#2E4A5A','#8A4A2E']; return cs[store.sets.length % cs.length]; }
 
 /* share */

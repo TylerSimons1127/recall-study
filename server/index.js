@@ -133,4 +133,63 @@ app.post("/api/tutor", async (req, res) => {
   }
 });
 
+// /api/import-quizlet — fetch a Quizlet set page, scrape term/definition pairs
+app.post("/api/import-quizlet", async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || typeof url !== "string") return res.status(400).json({ error: "url required" });
+  const trimmed = url.trim();
+  if (!/^https?:\/\//.test(trimmed) || !trimmed.includes("quizlet.com")) return res.status(400).json({ error: "must be a Quizlet URL" });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  let html;
+  try {
+    const r = await fetch(trimmed, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+      },
+    });
+    if (!r.ok) { clearTimeout(timeout); return res.status(502).json({ error: `quizlet HTTP ${r.status}` }); }
+    html = await r.text();
+    clearTimeout(timeout);
+  } catch (e) {
+    clearTimeout(timeout);
+    return res.status(502).json({ error: "could not fetch Quizlet page", detail: String(e.message || e).slice(0, 200) });
+  }
+
+  let cards = [];
+  // Try embedded JSON state first (__NEXT_DATA__ style)
+  try {
+    const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (m) {
+      const d = JSON.parse(m[1]);
+      const found = [];
+      const walk = (o) => {
+        if (!o || typeof o !== "object") return;
+        if (o.cardSides && Array.isArray(o.cardSides)) {
+          const texts = o.cardSides.map(s => s?.media?.map(mm => mm.plainText || "").join(" ").trim()).filter(Boolean);
+          if (texts.length >= 2) found.push({ q: texts[0], a: texts.slice(1).join(" ") });
+        }
+        for (const k in o) walk(o[k]);
+      };
+      walk(d);
+      if (found.length >= 2) cards = found;
+    }
+  } catch {}
+
+  // Fallback: visible term/definition markup
+  if (!cards.length) {
+    const strip = s => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const terms = [...html.matchAll(/<[^>]+class="[^"]*TermText[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/g)].map(m => strip(m[1]));
+    const defs = [...html.matchAll(/<[^>]+class="[^"]*DefinitionText[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/g)].map(m => strip(m[1]));
+    const n = Math.min(terms.length, defs.length);
+    for (let i = 0; i < n; i++) if (terms[i] && defs[i]) cards.push({ q: terms[i], a: defs[i] });
+  }
+  if (!cards.length) return res.status(422).json({ error: "could not scrape cards — page may require JS or be private" });
+  res.json({ cards: cards.slice(0, 200), source: "quizlet" });
+});
+
 app.listen(PORT, () => console.log(`recall-api listening on ${PORT}`));
