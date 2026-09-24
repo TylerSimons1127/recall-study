@@ -143,24 +143,38 @@ app.post("/api/import-quizlet", async (req, res) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25000);
   let html;
+  const baseHeaders = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "identity",               // avoid gzipped responses we don't decompress
+    "Referer": "https://www.google.com/",
+    "DNT": "1",
+  };
   try {
-    const r = await fetch(trimmed, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-      },
-    });
-    if (!r.ok) { clearTimeout(timeout); return res.status(502).json({ error: `quizlet HTTP ${r.status}` }); }
-    html = await r.text();
+    // Quizlet has a plaintext export view (export=1) that reliably serves term-definition pairs
+    const exportUrl = trimmed + (trimmed.includes("?") ? "&" : "?") + "export=1";
+    const r = await fetch(exportUrl, { redirect: "follow", signal: controller.signal, headers: baseHeaders });
     clearTimeout(timeout);
+    if (!r.ok) return res.status(502).json({ error: `quizlet HTTP ${r.status}` });
+    html = await r.text();
   } catch (e) {
     clearTimeout(timeout);
     return res.status(502).json({ error: "could not fetch Quizlet page", detail: String(e.message || e).slice(0, 200) });
   }
 
   let cards = [];
+
+  // Quizlet plaintext export format: one "term<TAB>definition" per line (with possible header line)
+  const lines = html.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  for (const raw of lines){
+    const line = raw.replace(/<[^>]+>/g, " ").replace(/&\w+;/g, " ");
+    // try tab, em-dash, or "|" separators; skip header/title rows
+    const parts = line.split(/\t|\s+—\s+|\s+\|\s+/).map(s=>s.trim()).filter(Boolean);
+    if (parts.length >= 2 && !/^export|^https?:|^$/i.test(parts[0])) {
+      cards.push({ q: parts[0], a: parts.slice(1).join(" ") });
+    }
+  }
   // Try embedded JSON state first (__NEXT_DATA__ style)
   try {
     const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
